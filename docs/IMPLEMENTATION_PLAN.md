@@ -1,0 +1,74 @@
+# Next implementation plan
+
+No coding phase has been authorized by the documentation bootstrap. This file defines the next controlled work; it does not start it.
+
+## Immediate next step: complete the Phase 0 read-only capability spike
+
+Do this before the full Phase 1 foundation because it tests the riskiest external assumptions without building product features.
+
+### Prerequisites supplied/configured by the owner
+
+- a Mercado Libre developer application with the exact approved HTTPS callback;
+- the intended main/admin MPE seller account;
+- least required read permission for identity/listings and optional read capabilities under test;
+- a safe local/staging secret channel, never a committed `.env` value;
+- a Cloudflare account/domain decision if the callback requires the future staging hostname.
+
+### Deliverable
+
+Create a minimal non-production TypeScript capability harness that:
+
+1. generates/validates state and S256 PKCE;
+2. exchanges and encrypts credentials without printing them;
+3. validates `/users/me` and MPE account binding;
+4. proves one rotating refresh and simulates concurrent callers;
+5. enumerates seller listing IDs and hydrates a bounded sample;
+6. probes the read-only matrix from `MERCADOLIBRE_API.md`;
+7. emits only sanitized capability outcomes and fixture candidates;
+8. has unit tests for redaction, state/PKCE, pagination, and refresh coordination;
+9. makes no item/order/shipping write call and contains a hard method/endpoint allowlist.
+
+Keep the harness disposable or place reusable OAuth/client primitives behind interfaces that can move into Phase 1. Do not build a UI, migrations beyond what the refresh proof truly needs, or a generalized SDK.
+
+### Completion
+
+Reconcile results manually, update API evidence/decisions, add sanitized fixtures, run the P0 checks, and obtain an explicit P0 pass. Stop if the main seller cannot authorize, token rotation is unsafe, or listing retrieval cannot be reconciled.
+
+## Recommended Phase 1 implementation sequence
+
+After P0 passes and Phase 1 is explicitly authorized:
+
+1. **Pin the toolchain.** Select supported Node/TypeScript/Wrangler versions and scaffold the official Cloudflare React/Vite full-stack Worker. Add the smallest router only after bundle validation.
+2. **Establish checks first.** Add formatter, lint, strict typecheck, Vitest/Workers tests, React tests, build, secret scan, and CI; document exact local commands.
+3. **Separate environments.** Configure local, staging, and production names/bindings without values; add safe `.dev.vars.example`; generate Worker binding types.
+4. **Prove the deployment shell.** Serve one accessible SPA route and `/api/health`; deploy staging on a custom hostname with no application features.
+5. **Protect the owner boundary.** Configure Cloudflare Access, validate JWT signature/issuer/audience in the Worker, and test custom/alternate hostname denial.
+6. **Add minimal D1 migrations.** Implement only `accounts`, `oauth_states`, `oauth_credentials`, and `audit_events`; test empty and upgrade migration paths.
+7. **Build credential cryptography.** AES-GCM with unique IV, authenticated context, key versions, redaction, and rotation-oriented tests.
+8. **Implement OAuth vertically.** Start/callback/reconnect with exact MPE host, state/PKCE, safe return path, `/users/me`, wrong-site/account rejection, and encrypted storage.
+9. **Implement refresh coordination.** D1 version/lease and atomic new-pair persistence; concurrency, ambiguous failure, expiry, revocation, and reconnect tests.
+10. **Promote the read client.** Narrow typed identity/listing-count methods, timeouts, safe read retries, error mapping, request IDs, and no generic proxy.
+11. **Expose the smallest UI.** Connection status, verified account/site, last verification, listing count, and reconnect only.
+12. **Run the P1 gate.** Full automation plus manual staging Access/OAuth/count verification; update docs/decisions and stop.
+
+## Phase 1 pull-request slices
+
+Prefer reviewable vertical slices:
+
+1. toolchain + CI + health deployment;
+2. Access/JWT boundary;
+3. D1 + encryption primitives;
+4. OAuth start/callback/account binding;
+5. rotating refresh/reconnect;
+6. listing-count endpoint + minimal status UI + P1 evidence.
+
+Each slice includes tests and documentation. Never merge a half-protected OAuth callback or plaintext-token intermediate state to a deployed environment.
+
+## Explicitly not part of the next step
+
+- listing table/detail UI;
+- any Mercado Libre mutation;
+- order management UI;
+- analytics/comparables/snapshot scheduler;
+- R2, Queue, Durable Objects, AI/image providers, MCP, or PWA;
+- production data migration or external marketplace scraping.
