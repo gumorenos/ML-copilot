@@ -1,6 +1,6 @@
 # Roadmap
 
-Status date: 2026-09-01. A phase starts only with explicit instruction after its predecessor's gate is met or deliberately waived with a recorded decision.
+Status date: 2026-09-02. A phase starts only with explicit instruction after its predecessor's gate is met or deliberately waived with a recorded decision.
 
 ## Delivery rules
 
@@ -12,18 +12,19 @@ Status date: 2026-09-01. A phase starts only with explicit instruction after its
 
 ## Phase 0 — Research, architecture, and MPE capability proof
 
-### Repository bootstrap completed
+### Repository bootstrap and read-only harness completed
 
 - Product boundaries and safety invariants documented.
 - Official Mercado Libre and Cloudflare documentation researched.
 - Public repository/license/runtime assessments recorded.
 - Architecture, conceptual D1 model, threat controls, test strategy, and decisions proposed.
-- No application code or seller integration implemented.
+- A minimal dependency-free read-only harness is implemented on the Phase 0 branch: OAuth/PKCE, encrypted credential round-trip, refresh lease/CAS contract, MPE identity/listing/item reads, runtime schemas, and seller-model classification.
+- No seller credentials were available for this work session; no real MPE read-only call has been made and no seller data has been modified.
 
 ### Remaining work
 
 - Register/configure the Mercado Libre application with exact MPE HTTPS callback and least required functional permissions.
-- Build a local, read-only capability harness with state/PKCE and strict secret redaction.
+- Configure the local probe without exposing secrets and complete the real read-only capability run.
 - Connect the intended main/admin MPE seller account.
 - Exercise the read-only matrix in `MERCADOLIBRE_API.md` and commit sanitized fixtures/evidence.
 - Reconcile seller listing count and representative states against Seller Center.
@@ -44,7 +45,7 @@ All of the following are required:
 8. Retry/rate/error behavior is bounded and documented.
 9. All checks are read-only; no seller listing is changed.
 
-If item discovery or secure token rotation cannot be proven, Phase 1 is a no-go. If only a later optional capability fails, revise that later phase rather than hiding the gap.
+Current gate status: PARTIAL pending the external credential and real MPE read-only checks. Automated/mocked checks must pass before the manual run, but they cannot promote this gate to PASS. If item discovery or secure token rotation cannot be proven, Phase 1 is a no-go. If only a later optional capability fails, revise that later phase rather than hiding the gap.
 
 ## Phase 1 — Cloudflare foundation and OAuth
 

@@ -2,7 +2,7 @@
 
 ML Copilot is a personal, mobile-first web application for operating one small Mercado Libre seller account in Peru. It aims to make day-to-day listing, sales, analytics, and market-review work simpler while keeping Mercado Libre as the operational source of truth.
 
-The project is **in Phase 0: research and architecture**. There is no application implementation yet. The repository currently contains the verified research, product boundaries, architecture proposal, safety rules, QA gates, and implementation sequence needed to begin development deliberately.
+The project is **in Phase 0: read-only connectivity proof**. The repository contains the planning baseline plus a small, dependency-free TypeScript harness for OAuth/PKCE helpers, encrypted credentials, rotating-refresh coordination, MPE identity/listing reads, item hydration, and seller-model classification. It is not the product UI and it cannot perform seller writes.
 
 ## Target user and scope
 
@@ -65,20 +65,23 @@ See [Architecture](docs/ARCHITECTURE.md), [conceptual data model](docs/DATA_MODE
 - Cloudflare Cron Triggers for scheduled snapshots
 - R2 only if the image phase requires private original/preview storage
 - a lightweight Workers-compatible HTTP router, provisionally Hono
-- Vitest, Workers test tooling, React Testing Library, and Playwright where appropriate
+- Node native test runner is used for the current proof to avoid an unverified dependency stack. Vitest, Workers test tooling, React Testing Library, and Playwright remain Phase 1 choices.
 
 Versions and exact package choices will be pinned and validated when Phase 1 is authorized. They are not implied to be installed today.
 
 ## Local setup
 
-There is no runnable application yet. For the documentation-only Phase 0 repository:
+The current proof is runnable with Node 24 or newer:
 
 1. Clone the repository.
 2. Read this file and [AGENTS.md](AGENTS.md).
-3. Review [Roadmap](docs/ROADMAP.md) and the unresolved items in [Mercado Libre API research](docs/MERCADOLIBRE_API.md).
-4. Obtain explicit authorization before starting the next phase.
+3. Run npm test for the mocked security/API matrix.
+4. Run npm run build for the runtime module-load check.
+5. Review [Phase 0 capability report](docs/PHASE0_CAPABILITY_REPORT.md).
+6. To start the real read-only check, configure the local variables documented in [Implementation plan](docs/IMPLEMENTATION_PLAN.md) and run npm run phase0:probe.
+7. Obtain explicit authorization before starting Phase 1.
 
-Phase 1 will add reproducible Node, Wrangler, D1, test, and local-secret setup instructions. Local secret files such as `.dev.vars` and `.env` are ignored and must never be committed.
+The probe first prints an authorization URL and creates an ignored short-lived transaction file. After the owner completes authorization, rerun it with the returned code and callback state. Local secret files such as .dev.vars and .env are ignored and must never be committed.
 
 ## Deployment model
 
@@ -92,12 +95,16 @@ D1 is expected to be sufficient for the personal workload. Cron Triggers will ru
 .
 |-- AGENTS.md                 durable instructions for coding agents
 |-- README.md                 human entry point
+|-- migrations/               minimal Phase 0 D1 schema
+|-- scripts/                  read-only probe and runtime checks
+|-- src/                      OAuth, crypto, refresh, API, schemas, and tests
 `-- docs/
     |-- ARCHITECTURE.md       system design and module boundaries
     |-- DATA_MODEL.md         initial conceptual D1 model
     |-- DECISIONS.md          lightweight architectural decision log
     |-- GITHUB_REUSE.md       audited open-source reuse assessment
     |-- IMPLEMENTATION_PLAN.md next controlled coding sequence
+    |-- PHASE0_CAPABILITY_REPORT.md read-only gate template and current status
     |-- MERCADOLIBRE_API.md   endpoint evidence and open questions
     |-- PRODUCT_SPEC.md       product behavior, scope, and invariants
     |-- QA.md                 test strategy and phase gates
@@ -108,16 +115,17 @@ D1 is expected to be sufficient for the personal workload. Cron Triggers will ru
 
 ## Current limitations
 
-- No Mercado Libre application credentials or seller account were used during this bootstrap.
-- Private MPE endpoints and all write behavior still require controlled real-account verification.
+- No Mercado Libre application credentials or seller account were available in this work session. The real MPE read-only gate is therefore pending.
+- Private MPE endpoint behavior, seller/listing model, and all write behavior still require controlled verification.
 - Unauthenticated requests to several nominally public MPE resources returned `403` during a dated probe; authenticated behavior remains to be tested.
+- Static TypeScript typechecking is not yet available because no compiler is installed in this checkout and package installation was blocked by the local registry TLS environment. The test and runtime checks do not claim to replace strict typechecking.
 - API availability, quotas, response fields, category-specific rules, and Cloudflare account configuration can vary and must be checked at implementation time.
 - No UI language, accessibility baseline beyond WCAG intent, AI provider, or image provider has been selected.
 - The repository has no selected open-source license; no third-party source code has been copied.
 
 ## Continue from here
 
-Do not start feature development from a broad interpretation of the product vision. First complete the read-only Phase 0 capability spike and record its evidence. The immediate next step is defined in [Implementation plan](docs/IMPLEMENTATION_PLAN.md); acceptance gates are in [QA](docs/QA.md).
+Do not start feature development from a broad interpretation of the product vision. First complete the real read-only Phase 0 capability spike and record its evidence. The exact runbook and stop conditions are in [Implementation plan](docs/IMPLEMENTATION_PLAN.md); acceptance gates are in [QA](docs/QA.md).
 
 When behavior or architecture changes, update the relevant documentation and [decision log](docs/DECISIONS.md) in the same change.
 

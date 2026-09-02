@@ -6,6 +6,9 @@ dist/
 coverage/
 playwright-report/
 test-results/
+dist/
+.phase0-*.json
+.phase0-*.tmp
 
 # Local credentials and environment overrides
 .env

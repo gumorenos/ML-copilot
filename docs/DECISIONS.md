@@ -92,6 +92,26 @@ Lightweight ADR format. “Accepted” means the current project direction; “P
 - Rationale: A narrow adapter for the early read-only endpoints is smaller than adapting a full agent/MCP stack.
 - Consequences: More local contract tests and maintenance. Re-evaluate selected MIT utilities if clean-room implementation becomes larger/riskier, after choosing this repository's license.
 
+## ADR-011 — Treat Mercado Libre identifiers as opaque text
+
+- Date: 2026-09-02
+- Status: Accepted
+- Decision: Represent Mercado Libre user, item, product, family, order, and related identifiers as text at application boundaries and in D1. Do not use 32-bit integer fields or arithmetic on provider IDs.
+- Alternatives: JavaScript number; signed 32-bit integer; provider-specific numeric wrappers.
+- Evidence: The official Mercado Libre developer portal warns that new user IDs can exceed the Int32 limit; current User Product examples also use large family/user identifiers.
+- Rationale: Text preserves exact values across JSON, JavaScript, SQLite, logs, URLs, and future identifier formats without precision loss.
+- Consequences: Equality/index lookups remain straightforward; any numeric ordering or arithmetic must use an explicitly separate value.
+
+## ADR-012 — Phase 0 uses a narrow read-only harness and D1 CAS contract
+
+- Date: 2026-09-02
+- Status: Accepted for Phase 0; implementation shape remains provisional for Phase 1
+- Decision: Prove OAuth, /users/me, MPE listing discovery, item hydration, encrypted token handling, and rotating-refresh coordination with a small Workers-compatible adapter and a minimal D1 schema. Keep the harness read-only and expose no generic upstream proxy.
+- Alternatives: full UI scaffold; an entire MCP/SDK dependency; Durable Objects/Redis/Queues for refresh locking; full application schema.
+- Evidence: The current gate is an authenticated read-only chain, the application has one owner/low concurrency, D1 supports SQL migrations and conditional updates, and the inspected third-party stacks are broader than required or not Workers-native.
+- Rationale: The smallest vertical proof reduces external/API risk before Phase 1 infrastructure and prevents accidental seller writes.
+- Consequences: Real MPE evidence and a later static typecheck remain explicit gates; the D1 conditional update must be exercised in a Worker/D1 integration test before production use.
+
 ## ADR-010 — Conceptual D1 model grows by phase
 
 - Date: 2026-09-01

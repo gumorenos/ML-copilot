@@ -1,6 +1,6 @@
 # Mercado Libre API research
 
-Research baseline: 2026-09-01. Official documentation is authoritative at implementation time; this file records what was found, not a permanent guarantee.
+Research baseline: 2026-09-02. Official documentation is authoritative at implementation time; this file records what was found, not a permanent guarantee.
 
 ## Evidence labels
 
@@ -9,7 +9,7 @@ Research baseline: 2026-09-01. Official documentation is authoritative at implem
 - **Real MPE verified**: exercised against the intended authenticated MPE seller account with sanitized evidence.
 - **Unverified**: not yet proven for the intended account/site or current contract.
 
-No endpoint in this document is marked real MPE verified yet. No seller credentials or write calls were used during repository bootstrap.
+No endpoint in this document is marked real MPE verified yet. The Phase 0 harness is implemented, but no seller credentials were available in this work session and no seller credentials or write calls were used.
 
 ## Peru applicability
 
@@ -50,6 +50,8 @@ See [Identity/access and tokens](https://developers.mercadolibre.com.pe/gestion-
 
 Mercado Libre's [application security guidance](https://developers.mercadolibre.com.pe/es_ar/calidad-de-publicaciones/seguridad-apps) requires secure credential storage and warns against exposing tokens/authorization data in logs. Its encryption guidance names AES-256 and secret-manager-held keys. ML Copilot therefore adds application-level AES-GCM token encryption even though D1 is encrypted at rest.
 
+The current authentication guide (last updated 2026-07-15) explicitly lists the allowed scopes as offline_access, read, and write, and documents invalid_grant, invalid_scope, 401/403, and rate-limit error cases. Phase 0 requests only offline_access read; write is intentionally not requested.
+
 ## Seller listings and item reads
 
 The main seller inventory discovery path in [Items and searches](https://developers.mercadolibre.com.pe/es_ar/sobre-nuestra-api/items-y-busquedas) is:
@@ -67,6 +69,21 @@ GET /items?ids={ID1,ID2,...}
 Do not use public marketplace search as the owner inventory source. Public `available_quantity` is intentionally represented in ranges, while an authenticated owner item read is needed for actual stock. `/sites/{SITE_ID}/search?seller_id=...` is also oriented to active marketplace results and will omit historical states.
 
 Phase 0 must compare returned listing IDs/counts/status/substatus against Seller Center, including a sample of active, paused, closed, and out-of-stock states when available.
+
+## User Products and multi-origin stock
+
+The current official [User Products guide](https://developers.mercadolibre.com.pe/es_ar/sobre-nuestra-api/user-products) describes an ongoing seller migration:
+
+- a seller with the user_product_seller tag is enabled for the new model;
+- before activation, an item may have user_product_id but no family_name and the relationship can be one-to-one;
+- after activation, User Products can group one or more items and a non-null family_name identifies items already using the new model;
+- old and new items can coexist while migration is in progress;
+- there is no endpoint that lists every seller family directly; family and item searches are separate resources;
+- catalog items do not use user_product_listing=true as their marker.
+
+The [multi-origin stock documentation](https://developers.mercadolibre.com.pe/en_us/tools/multi-origin-stock-management-user-products) says that warehouse_management and multiwarehouse tags identify warehouse-enabled accounts. For those accounts, available_quantity on /items may be ignored or rejected; stock is managed per warehouse through User Product stock resources. ML Copilot therefore records these tags and User Product identifiers in the Phase 0 capability report but does not implement any User Product mutation.
+
+The Phase 0 model classifier is deliberately conservative: it returns legacy-items, user-products, coexistence, or unknown from seller tags plus the sampled item markers. It is not a substitute for a full seller sweep.
 
 ## Item mutations and lifecycle
 
@@ -200,6 +217,7 @@ This observation is not an API contract. It means ML Copilot must not assume nom
 | Visits | time-window response and relist behavior sampled if available | unsupported MPE resource without alternative |
 | Marketplace search | authenticated MPE results and candidate fields recorded | no permitted way to retrieve inspectable candidates |
 | Catalogue/auxiliary | product search, trends, highlights, suggestions probed and classified | architecture assumes unsupported source |
+| Seller model | /users/me tags plus item family_name, user_product_id, and relevant tags classified as legacy, User Products, coexistence, or unknown | implementation assumes all stock/pricing follows legacy /items |
 | Limits/errors | request IDs, headers, `401/403/404/429` shapes documented safely | retries cannot be bounded or errors cannot be classified |
 
 Sanitized fixtures from successful probes may be committed only after secret/PII review. No item mutation is part of this matrix.
@@ -207,6 +225,8 @@ Sanitized fixtures from successful probes may be committed only after secret/PII
 ## Remaining unknowns
 
 - Exact functional permissions/scopes granted to the intended application and MPE seller.
+- Whether the intended account has user_product_seller, warehouse_management, or multiwarehouse tags; no real account metadata has been captured yet.
+- Whether the intended account uses legacy Items, User Products, or coexistence; this remains unknown until the authenticated sample is run.
 - Current authenticated MPE availability and field completeness for marketplace search, catalogue, highlights, price suggestions, visits, and notifications.
 - Effective rate limits and headers per endpoint/account.
 - Which price fields/endpoints are current for every MPE listing type and price automation mode.

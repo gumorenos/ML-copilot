@@ -1,6 +1,6 @@
 # Research sources
 
-Research and access date: 2026-09-01 unless stated otherwise. Primary documentation should be rechecked before implementation because contracts, limits, and product availability change.
+Research and access date: 2026-09-02 unless stated otherwise. Primary documentation should be rechecked before implementation because contracts, limits, and product availability change.
 
 ## Mercado Libre official documentation
 
@@ -27,6 +27,10 @@ Research and access date: 2026-09-01 unless stated otherwise. Primary documentat
 - [Relist](https://developers.mercadolibre.com.pe/re-publica)
 - [Catalogue eligibility](https://developers.mercadolibre.com.pe/es_ar/publica-productos/elegibilidad-catalogo)
 - [Product search](https://developers.mercadolibre.com.pe/es_ar/sobre-nuestra-api/buscador-de-productos)
+- [User Products](https://developers.mercadolibre.com.pe/es_ar/sobre-nuestra-api/user-products) (last updated 2026-06-17; seller migration and item markers)
+- [Price per variation](https://developers.mercadolibre.com.pe/es_ar/calidad-de-publicaciones/precio-variacion)
+- [Multi-origin stock / User Products FAQ](https://developers.mercadolibre.com.pe/en_us/tools/multi-origin-stock-management-user-products) (last updated 2026-05-05)
+- [Multi-origin stock](https://developers.mercadolibre.com.pe/es_ar/publica-productos/stock-multi-origen) (last updated 2026-05-15)
 
 ### Sales, analytics, and market context
 
@@ -58,6 +62,7 @@ Research and access date: 2026-09-01 unless stated otherwise. Primary documentat
 - [Access application paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/)
 - [Validate Access JWTs](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/)
 - [One-time PIN identity provider](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/one-time-pin/)
+- [Workers configuration](https://developers.cloudflare.com/workers/configuration/)
 
 ## Public repositories inspected
 
@@ -69,6 +74,13 @@ Research and access date: 2026-09-01 unless stated otherwise. Primary documentat
 - [ralvarezdev/mercadolibre-go-sdk](https://github.com/ralvarezdev/mercadolibre-go-sdk), commit `d88a115afeafec6a1ecfe387e885ddb53203bc6d`
 
 Detailed license, test, runtime, MPE, and reuse findings are in [GITHUB_REUSE.md](GITHUB_REUSE.md).
+
+## Current verification notes
+
+- The authentication page was rechecked on 2026-09-02. It documents Authorization Code (server-side), exact static redirect URI, administrator/main-account authorization, optional-but-required-when-enabled PKCE parameters, allowed offline_access/read/write scopes, expires_in, and single-use rotating refresh tokens.
+- The User Products guide was rechecked on 2026-09-02. It documents the user_product_seller migration tag, family_name marker, old/new coexistence, and the absence of a direct list-all-seller-families endpoint.
+- The multi-origin FAQ and guide were rechecked on 2026-09-02. They document warehouse_management/multiwarehouse tags and per-warehouse User Product stock management.
+- The Cloudflare Secrets, Web Crypto, D1 migrations, and Wrangler configuration pages were rechecked on 2026-09-02. They support Worker Secrets, Web Crypto, versioned migrations, and D1 bindings without adding another runtime service.
 
 ## Bootstrap observations
 

@@ -1,6 +1,6 @@
 # Next implementation plan
 
-No coding phase has been authorized by the documentation bootstrap. This file defines the next controlled work; it does not start it.
+Phase 0 implementation is limited to the branch feat/phase-0-meli-connectivity. This file describes the completed read-only harness and the remaining external gate; it does not authorize Phase 1.
 
 ## Immediate next step: complete the Phase 0 read-only capability spike
 
@@ -14,9 +14,20 @@ Do this before the full Phase 1 foundation because it tests the riskiest externa
 - a safe local/staging secret channel, never a committed `.env` value;
 - a Cloudflare account/domain decision if the callback requires the future staging hostname.
 
+The local probe expects these variables only when the corresponding step is run:
+
+- ML_CLIENT_ID and ML_REDIRECT_URI for authorization URL generation;
+- ML_CLIENT_SECRET, ML_AUTH_CODE, and ML_CALLBACK_STATE for server-side code exchange;
+- ML_ENCRYPTION_KEY for the in-memory AES-GCM round-trip check;
+- ML_ACCESS_TOKEN only for a read-only diagnostic when a token already exists;
+- ML_API_BASE_URL optionally overrides the API host for a mocked/local server;
+- ML_SAMPLE_SIZE is optional and bounded from 1 to 20.
+
+Do not paste values into chat. Use an ignored local environment file or a process-local shell assignment. The exact redirect URI must be registered in the Mercado Libre application and must be HTTPS.
+
 ### Deliverable
 
-Create a minimal non-production TypeScript capability harness that:
+The Phase 0 branch now contains a minimal non-production TypeScript capability harness that:
 
 1. generates/validates state and S256 PKCE;
 2. exchanges and encrypts credentials without printing them;
@@ -25,14 +36,28 @@ Create a minimal non-production TypeScript capability harness that:
 5. enumerates seller listing IDs and hydrates a bounded sample;
 6. probes the read-only matrix from `MERCADOLIBRE_API.md`;
 7. emits only sanitized capability outcomes and fixture candidates;
-8. has unit tests for redaction, state/PKCE, pagination, and refresh coordination;
-9. makes no item/order/shipping write call and contains a hard method/endpoint allowlist.
+8. has Node-native unit tests for state/PKCE, pagination, schema failures, encryption, redaction-by-omission, and refresh coordination;
+9. makes no item/order/shipping write call and exposes only token POST plus read-only users/items methods.
+
+The implementation is split into small modules: oauth.ts (state/PKCE), crypto.ts (AES-GCM), memory-store.ts and d1-store.ts (credential/state persistence contracts), refresh.ts (lease/CAS refresh), meli-client.ts (narrow REST adapter), schemas.ts (runtime validation), model.ts (seller-model assessment), and probe.ts (sanitized report). migrations/0001_phase0_auth.sql is the only D1 migration.
 
 Keep the harness disposable or place reusable OAuth/client primitives behind interfaces that can move into Phase 1. Do not build a UI, migrations beyond what the refresh proof truly needs, or a generalized SDK.
 
 ### Completion
 
-Reconcile results manually, update API evidence/decisions, add sanitized fixtures, run the P0 checks, and obtain an explicit P0 pass. Stop if the main seller cannot authorize, token rotation is unsafe, or listing retrieval cannot be reconciled.
+Reconcile results manually, update API evidence/decisions, add only sanitized fixtures, run the P0 checks, and obtain an explicit P0 pass. The current status is PARTIAL because no Mercado Libre application credentials or intended seller account were available for the real read-only gate. Stop if the main seller cannot authorize, token rotation is unsafe, or listing retrieval cannot be reconciled.
+
+## Running the proof safely
+
+1. Run npm test. This uses mocked responses and never contacts Mercado Libre.
+2. Run npm run build. This imports every runtime module with Node's type stripping.
+3. Run npm run phase0:probe with ML_CLIENT_ID and an exact HTTPS ML_REDIRECT_URI. The command writes only an ignored .phase0-oauth.json transaction containing short-lived state/PKCE material and prints an authorization URL.
+4. Complete authorization in the intended administrator/main account. Capture the code and state from the registered callback without recording the full callback URL in logs or screenshots.
+5. Rerun with ML_AUTH_CODE, ML_CALLBACK_STATE, ML_CLIENT_SECRET, ML_ENCRYPTION_KEY, and the same client ID/redirect URI. The probe exchanges the code server-side, checks encryption in memory, calls users/me, confirms MPE, lists seller item IDs, hydrates at most 20 items, and emits a sanitized report.
+6. Review docs/PHASE0_CAPABILITY_REPORT.md and compare the aggregate count/sample to Seller Center. Record the seller tags and item markers without committing titles, URLs, buyer data, or credentials.
+7. If refresh testing is approved and safe, exercise one rotation using the durable D1 path or a controlled test account. Never retry an ambiguous rotating refresh blindly.
+
+The harness has no callback Worker or deployed endpoint yet. A real OAuth run therefore needs an already deployed HTTPS callback that can return the code/state to the operator, or a temporary approved callback implementation. Creating that staging endpoint is a Phase 1 concern unless the owner supplies an existing registered callback.
 
 ## Recommended Phase 1 implementation sequence
 
