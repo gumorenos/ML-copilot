@@ -162,14 +162,19 @@ Detailed scope is in `ROADMAP.md`; this section defines the minimum QA character
 
 - Automated/manual: WCAG 2.2 AA core flows, device matrix, performance budgets, install/update/cache/offline safety.
 
-## Documentation-only bootstrap checks
+## Phase 0 local checks
 
-For the current bootstrap, required checks are:
+For the current Phase 0 branch, required local checks are:
 
-- every required document exists;
+- npm test (native Node tests; mocked Mercado Libre only);
+- npm run build (runtime module-load check);
+- npm run typecheck, recorded as unavailable until a TypeScript compiler is installed;
+- every required document exists, including the Phase 0 capability report;
 - every relative Markdown link resolves;
 - no trailing whitespace or patch conflict marker;
 - no secret-like local environment file is tracked;
 - `git diff --check` passes;
 - terminology and status do not contradict across README, architecture, roadmap, API, security, QA, and decisions;
-- no product implementation was introduced.
+- no UI, seller mutation, order mutation, analytics, image, AI, or PWA feature was introduced.
+
+The real-account result must be reported separately as REAL MPE READ-ONLY. Mock success cannot mark P0 PASS. The explicit report template is docs/PHASE0_CAPABILITY_REPORT.md.

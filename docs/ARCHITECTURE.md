@@ -73,6 +73,18 @@ A future Mercado Libre webhook receiver must be public. A narrowly scoped Access
 
 ## Module boundaries
 
+### Phase 0 implemented slice
+
+The current branch contains a deliberately non-UI proof, not the application shell. It keeps the following boundaries that can be promoted into the future Worker:
+
+- OAuth and PKCE helpers create and consume one-time state; the authorization code exchange stays server-side.
+- The Mercado Libre adapter exposes only token exchange/refresh and read-only users/items methods. Runtime schemas reject malformed upstream data, and read retries are bounded.
+- AES-GCM encrypts credential pairs before persistence. The D1 store uses credential-version compare-and-set and an expiring refresh lease; a memory store provides deterministic race tests.
+- The read-only probe confirms MPE before listing search, hydrates at most 20 item IDs, and emits field-presence summaries rather than raw seller payloads.
+- Seller-model classification preserves opaque IDs and distinguishes legacy Items, User Products, coexistence, and unknown from seller tags plus sampled item markers. It records warehouse capability tags for future stock routing but performs no User Product writes.
+
+There is intentionally no Worker entry point, browser UI, Cloudflare deployment, callback route, order service, mutation method, or production data migration in Phase 0. The code is reviewable as an isolated capability artifact and is not yet part of the app runtime.
+
 The proposed source layout is illustrative; Phase 1 may refine names without changing the boundaries.
 
 ```text
