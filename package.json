@@ -7,10 +7,15 @@
     "build": "tsc -p tsconfig.build.json && node dist/scripts/build-check.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --experimental-strip-types --test \"src/**/*.test.ts\"",
+    "test:worker": "vitest run --config vitest.config.ts",
+    "d1:migrate:local": "wrangler d1 migrations apply ml-copilot-phase0 --local",
     "phase0:probe": "node --experimental-strip-types scripts/phase0-probe.ts"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.1.4",
     "@types/node": "26.4.1",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "4.1.11",
+    "wrangler": "4.129.0"
   }
 }

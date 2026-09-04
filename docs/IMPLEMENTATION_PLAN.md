@@ -1,101 +1,73 @@
-# Next implementation plan
+# Implementation plan
 
-Phase 0 implementation is limited to the branch feat/phase-0-meli-connectivity. This file describes the completed read-only harness and the remaining external gate; it does not authorize Phase 1.
+Status: Phase 0C implemented on `feat/phase-0-meli-connectivity`; no Phase 1 work is authorized.
 
-## Immediate next step: complete the Phase 0 read-only capability spike
+## Completed Phase 0C slice
 
-Do this before the full Phase 1 foundation because it tests the riskiest external assumptions without building product features.
+The branch now contains:
 
-### Prerequisites supplied/configured by the owner
+- pinned Wrangler `4.129.0`, Vitest `4.1.11`, and `@cloudflare/vitest-plugin` `1.1.4`;
+- `wrangler.jsonc` with the `DB` D1 binding and safe placeholders;
+- `vitest.config.ts` and `test/apply-migrations.ts` using the official Cloudflare Workerd/D1 test integration;
+- a minimal `src/worker.ts` with three routes only;
+- encrypted OAuth-verifier storage, D1 account persistence, initial encrypted credential persistence, and lease/CAS validation;
+- mocked Node-native route tests plus actual local Workerd/D1 integration tests;
+- `.github/workflows/phase0-quality.yml` for reproducible checks on pull requests to `main` and pushes to this branch.
 
-- a Mercado Libre developer application with the exact approved HTTPS callback;
-- the intended main/admin MPE seller account;
-- least required read permission for identity/listings and optional read capabilities under test;
-- a safe local/staging secret channel, never a committed `.env` value;
-- a Cloudflare account/domain decision if the callback requires the future staging hostname.
+No production deployment, React UI, seller write, order operation, or Phase 1 feature was added.
 
-The local probe expects these variables only when the corresponding step is run:
+## Local validation sequence
 
-- ML_CLIENT_ID and ML_REDIRECT_URI for authorization URL generation;
-- ML_CLIENT_SECRET, ML_AUTH_CODE, and ML_CALLBACK_STATE for server-side code exchange;
-- ML_ENCRYPTION_KEY for the in-memory AES-GCM round-trip check;
-- ML_ACCESS_TOKEN only for a read-only diagnostic when a token already exists;
-- ML_API_BASE_URL optionally overrides the API host for a mocked/local server;
-- ML_SAMPLE_SIZE is optional and bounded from 1 to 20.
+Run from a clean checkout:
 
-Do not paste values into chat. Use an ignored local environment file or a process-local shell assignment. The exact redirect URI must be registered in the Mercado Libre application and must be HTTPS.
+```text
+npm ci
+npm run typecheck
+npm test
+npm run test:worker
+npm run build
+npm run d1:migrate:local
+```
 
-### Deliverable
+`npm test` is the fast Node-native suite. `npm run test:worker` runs Vitest in the Cloudflare Workers pool and applies `migrations/0001_phase0_auth.sql` to local D1. `npm run d1:migrate:local` is an optional persistent local database check; both are local-only commands. `npm run build` compiles the Worker-compatible TypeScript source and runs the compiled module smoke check.
 
-The Phase 0 branch now contains a minimal non-production TypeScript capability harness that:
+## Staging handoff (manual, not performed here)
 
-1. generates/validates state and S256 PKCE;
-2. exchanges and encrypts credentials without printing them;
-3. validates `/users/me` and MPE account binding;
-4. proves one rotating refresh and simulates concurrent callers;
-5. enumerates seller listing IDs and hydrates a bounded sample;
-6. probes the read-only matrix from `MERCADOLIBRE_API.md`;
-7. emits only sanitized capability outcomes and fixture candidates;
-8. has Node-native unit tests for state/PKCE, pagination, schema failures, encryption, redaction-by-omission, and refresh coordination;
-9. makes no item/order/shipping write call and exposes only token POST plus read-only users/items methods.
+1. Create or select the Mercado Libre developer application and authorize the intended administrator/main seller account.
+2. Choose the eventual HTTPS staging hostname. Register exactly:
 
-The implementation is split into small modules: oauth.ts (state/PKCE), crypto.ts (AES-GCM), memory-store.ts and d1-store.ts (credential/state persistence contracts), refresh.ts (lease/CAS refresh), meli-client.ts (narrow REST adapter), schemas.ts (runtime validation), model.ts (seller-model assessment), and probe.ts (sanitized report). migrations/0001_phase0_auth.sql is the only D1 migration.
+   `https://<staging-hostname>/phase0/oauth/callback`
 
-Keep the harness disposable or place reusable OAuth/client primitives behind interfaces that can move into Phase 1. Do not build a UI, migrations beyond what the refresh proof truly needs, or a generalized SDK.
+   The value must match `ML_REDIRECT_URI` byte-for-byte; HTTP, fragments, alternate paths, and trailing-slash differences are not interchangeable.
+3. Create a real Cloudflare D1 database and set the `DB` binding's real database ID in staging configuration. Apply the migration with Wrangler using the documented staging environment. Never use `--remote` from routine local tests.
+4. Set non-secret variables `ML_CLIENT_ID`, `ML_REDIRECT_URI`, and `ML_API_BASE_URL`.
+5. Set Worker Secrets without sending values through chat:
 
-### Completion
+   - `ML_CLIENT_SECRET`
+   - `ML_ENCRYPTION_KEY`
+   - `PHASE0_OPERATOR_TOKEN`
 
-Reconcile results manually, update API evidence/decisions, add only sanitized fixtures, run the P0 checks, and obtain an explicit P0 pass. The current status is PARTIAL because no Mercado Libre application credentials or intended seller account were available for the real read-only gate. Stop if the main seller cannot authorize, token rotation is unsafe, or listing retrieval cannot be reconciled.
+   Generate the encryption key with the repository's Web Crypto helper or another trusted local generator; it must be a base64url-encoded 32-byte value.
 
-## Running the proof safely
+   Configure secrets interactively (never put values in Git or chat):
 
-1. Run npm ci with the pinned lockfile. If the host requires system trust roots, use Node's secure `--use-system-ca` mode; never disable TLS verification.
-2. Run npm run typecheck. This invokes the pinned TypeScript compiler and must fail on errors.
-3. Run npm test. This uses mocked responses and never contacts Mercado Libre.
-4. Run npm run build. This emits compiled JavaScript to ignored `dist/` and loads the compiled runtime modules.
-5. Run npm run phase0:probe with ML_CLIENT_ID and an exact HTTPS ML_REDIRECT_URI. The command writes only an ignored .phase0-oauth.json transaction containing short-lived state/PKCE material and prints an authorization URL.
-6. Complete authorization in the intended administrator/main account. Capture the code and state from the registered callback without recording the full callback URL in logs or screenshots.
-7. Rerun with ML_AUTH_CODE, ML_CALLBACK_STATE, ML_CLIENT_SECRET, ML_ENCRYPTION_KEY, and the same client ID/redirect URI. The probe exchanges the code server-side, checks encryption in memory, calls users/me, confirms MPE, lists seller item IDs, hydrates at most 20 items, and emits a sanitized report.
-8. Review docs/PHASE0_CAPABILITY_REPORT.md and compare the aggregate count/sample to Seller Center. Record the seller tags and item markers without committing titles, URLs, buyer data, or credentials.
-9. If refresh testing is approved and safe, exercise one rotation using the durable D1 path or a controlled test account. Never retry an ambiguous rotating refresh blindly.
+   ```text
+   npx wrangler secret put ML_CLIENT_SECRET
+   npx wrangler secret put ML_ENCRYPTION_KEY
+   npx wrangler secret put PHASE0_OPERATOR_TOKEN
+   ```
+6. Deploy only the narrow Phase 0 Worker after reviewing the diff and secret scan. Do not add Cloudflare Access solely to make this callback work; record any Access interaction as a Phase 1 decision.
+7. Visit `/phase0/oauth/start` with the operator header. Complete Mercado Libre authorization in the main/admin MPE account. Mercado Libre redirects the browser to the public callback.
+8. After a successful callback, call `/phase0/capability` with the operator header. Record only sanitized aggregate results and seller-model tags.
+9. If refresh rotation is exercised, use a controlled test account first where supported. Do not repeat an ambiguous refresh request with the live seller credential.
+10. Compare the listing count/sample against Seller Center and update `docs/PHASE0_CAPABILITY_REPORT.md` without committing tokens, titles, buyer data, or raw payloads.
 
-The harness has no callback Worker or deployed endpoint yet. A real OAuth run therefore needs an already deployed HTTPS callback that can return the code/state to the operator, or a temporary approved callback implementation. Creating that staging endpoint is a Phase 1 concern unless the owner supplies an existing registered callback.
+The Phase 0 callback is not an application login system. A future deployment must replace the temporary operator token with the documented owner authentication boundary and protect alternate hostnames.
 
-## Recommended Phase 1 implementation sequence
+## Phase 0 acceptance gate
 
-After P0 passes and Phase 1 is explicitly authorized:
+Phase 0 is PASS only after deployed Cloudflare and real MPE read-only evidence proves OAuth, `/users/me`, `site_id = MPE`, seller item count, bounded details, relevant seller tags/model, and safe refresh rotation. Automated and local Workerd/D1 success cannot produce PASS. The current status is PARTIAL because those external steps have not run.
 
-1. **Pin the toolchain.** Select supported Node/TypeScript/Wrangler versions and scaffold the official Cloudflare React/Vite full-stack Worker. Add the smallest router only after bundle validation.
-2. **Establish checks first.** Add formatter, lint, strict typecheck, Vitest/Workers tests, React tests, build, secret scan, and CI; document exact local commands.
-3. **Separate environments.** Configure local, staging, and production names/bindings without values; add safe `.dev.vars.example`; generate Worker binding types.
-4. **Prove the deployment shell.** Serve one accessible SPA route and `/api/health`; deploy staging on a custom hostname with no application features.
-5. **Protect the owner boundary.** Configure Cloudflare Access, validate JWT signature/issuer/audience in the Worker, and test custom/alternate hostname denial.
-6. **Add minimal D1 migrations.** Implement only `accounts`, `oauth_states`, `oauth_credentials`, and `audit_events`; test empty and upgrade migration paths.
-7. **Build credential cryptography.** AES-GCM with unique IV, authenticated context, key versions, redaction, and rotation-oriented tests.
-8. **Implement OAuth vertically.** Start/callback/reconnect with exact MPE host, state/PKCE, safe return path, `/users/me`, wrong-site/account rejection, and encrypted storage.
-9. **Implement refresh coordination.** D1 version/lease and atomic new-pair persistence; concurrency, ambiguous failure, expiry, revocation, and reconnect tests.
-10. **Promote the read client.** Narrow typed identity/listing-count methods, timeouts, safe read retries, error mapping, request IDs, and no generic proxy.
-11. **Expose the smallest UI.** Connection status, verified account/site, last verification, listing count, and reconnect only.
-12. **Run the P1 gate.** Full automation plus manual staging Access/OAuth/count verification; update docs/decisions and stop.
+## Explicitly deferred
 
-## Phase 1 pull-request slices
-
-Prefer reviewable vertical slices:
-
-1. toolchain + CI + health deployment;
-2. Access/JWT boundary;
-3. D1 + encryption primitives;
-4. OAuth start/callback/account binding;
-5. rotating refresh/reconnect;
-6. listing-count endpoint + minimal status UI + P1 evidence.
-
-Each slice includes tests and documentation. Never merge a half-protected OAuth callback or plaintext-token intermediate state to a deployed environment.
-
-## Explicitly not part of the next step
-
-- listing table/detail UI;
-- any Mercado Libre mutation;
-- order management UI;
-- analytics/comparables/snapshot scheduler;
-- R2, Queue, Durable Objects, AI/image providers, MCP, or PWA;
-- production data migration or external marketplace scraping.
+Do not implement React/Vite UI, listing management, orders, analytics, market intelligence, historical snapshots, AI/image providers, MCP, PWA, or any seller/business write until Phase 0 is reviewed and Phase 1 is explicitly authorized.

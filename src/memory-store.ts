@@ -12,6 +12,19 @@ export class MemoryCredentialStore implements CredentialStore {
     return record ? cloneRecord(record) : null;
   }
 
+  async putInitial(accountId: string, encrypted: EncryptedCredential, expiresAt: number, now: number): Promise<void> {
+    if (!accountId) throw new Error("Credential account ID is required");
+    if (!Number.isSafeInteger(expiresAt) || expiresAt < 0) throw new Error("Credential expiry must be a non-negative safe integer");
+    if (!Number.isSafeInteger(now)) throw new Error("Credential time must be a safe integer");
+    const existing = this.records.get(accountId);
+    this.records.set(accountId, {
+      accountId,
+      credentialVersion: existing ? existing.credentialVersion + 1 : 1,
+      encrypted: cloneEncrypted(encrypted),
+      expiresAt,
+    });
+  }
+
   async tryAcquireRefresh(accountId: string, expectedVersion: number, owner: string, now: number, leaseUntil: number): Promise<boolean> {
     const record = this.records.get(accountId);
     if (!record || record.credentialVersion !== expectedVersion) return false;

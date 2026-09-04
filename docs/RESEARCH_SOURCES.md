@@ -87,3 +87,23 @@ Detailed license, test, runtime, MPE, and reuse findings are in [GITHUB_REUSE.md
 The target GitHub repository was empty at clone time: no commits and no tracked files.
 
 Harmless unauthenticated MPE reads on 2026-09-01 returned `403`, as recorded in [MERCADOLIBRE_API.md](MERCADOLIBRE_API.md). These are observations, not authoritative endpoint contracts.
+
+## Phase 0C Cloudflare verification (checked 2026-09-04)
+
+- [Workers testing overview](https://developers.cloudflare.com/workers/testing/) recommends the Workers Vitest integration and whole-Worker tests.
+- [Workers Vitest integration](https://developers.cloudflare.com/workers/testing/vitest-integration/) documents `@cloudflare/vitest-plugin`, `cloudflare:workers`, and the current plugin configuration.
+- [Write your first Workers test](https://developers.cloudflare.com/workers/testing/vitest-integration/write-your-first-test/) documents `readD1Migrations` and the `applyD1Migrations(env.DB, env.TEST_MIGRATIONS)` setup used by this branch.
+- [D1 local development](https://developers.cloudflare.com/d1/best-practices/local-development/) documents Wrangler/Miniflare/workerd local D1 and `wrangler d1 migrations apply --local`.
+- [Wrangler configuration](https://developers.cloudflare.com/workers/wrangler/configuration/) documents `wrangler.jsonc`, D1 binding fields, migration directories, and environment configuration.
+- [Mock outbound requests](https://developers.cloudflare.com/workers/testing/vitest-integration/mock-outbound-requests/) documents the current MSW path. Phase 0 route tests intentionally inject a small `FetchLike` mock instead of adding MSW; no third-party API mock source code was copied.
+
+Package versions intentionally pinned for this proof: `@cloudflare/vitest-plugin@1.1.4`, `vitest@4.1.11` (plugin peer-compatible), and `wrangler@4.129.0`. These are development dependencies only; no application UI or deployment plugin was added.
+## Mercado Libre recheck (2026-09-04)
+
+- [Current Peru Authentication and Authorization](https://developers.mercadolibre.com.pe/autenticacion-y-autorizacion) was rechecked before the Phase 0C Worker. It documents Authorization Code, PKCE parameter behavior, exact configured redirect URI, `expires_in`, rotating single-use refresh tokens, and the latest-token rule.
+- [Current Peru Items and Searches](https://developers.mercadolibre.com.pe/es_ar/publica-productos/items-y-busquedas) was rechecked. It keeps `/users/{User_id}/items/search`, `search_type=scan`, and a 20-entry multiget, and announces `/items/bulk` migration before 2026-10-25.
+- [Current Peru User Products](https://developers.mercadolibre.com.pe/es_ar/sobre-nuestra-api/user-products) was rechecked. It confirms `user_product_seller`, `family_name`, coexistence, and no all-families endpoint.
+- [Current Peru distributed stock](https://developers.mercadolibre.com.pe/es_ar/sobre-nuestra-api/stock-distribuido) was rechecked for `warehouse_management` and User Product stock resources.
+- [Current Peru highlights](https://developers.mercadolibre.com.pe/es_ar/sobre-nuestra-api/mas-vendidos-en-mercado-libre) was rechecked; `/highlights` can mix ITEM, PRODUCT, and USER_PRODUCT entities.
+
+Search results were accessed on 2026-09-04. Direct page fetches can return a documentation-site 403 to automated clients; the search extracts and linked official pages are retained as research leads and must be rechecked in a normal browser when a later phase depends on a detail.

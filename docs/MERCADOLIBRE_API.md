@@ -233,3 +233,13 @@ Sanitized fixtures from successful probes may be committed only after secret/PII
 - Category/listing-specific editable fields, image rules, and catalogue restrictions.
 - Order metric inclusion definition and available history for this account.
 - Notification authenticity options beyond application/user/resource validation; current docs must be rechecked before exposing the endpoint.
+
+## Phase 0C recheck (2026-09-04)
+
+The current official Peru authentication page was rechecked before implementing the Worker. It continues to document Authorization Code exchange at `POST /oauth/token`, optional PKCE parameters that become required when PKCE is enabled, exact configured redirect URI, a returned `expires_in`, a new refresh token on each exchange, and single-use/latest-refresh-token rules. The implementation therefore enables S256 PKCE, requests `offline_access read`, uses the returned `expires_in`, and never hardcodes a duration. The page examples show differing duration values across locales/versions; the response field remains authoritative.
+
+The current items/search documentation was also rechecked. `/users/{USER_ID}/items/search` remains the seller-account listing source; `search_type=scan` is used for large result sets; and multiget is limited to 20 entries. The current page announces a migration from `/items?ids=...` to `/items/bulk?ids=...` before 2026-10-25, with both endpoints coexisting during the transition. Phase 0 intentionally uses the documented legacy multiget path for the bounded proof and records the bulk migration as a Phase 1 client-maintenance task; no seller write is involved.
+
+The current User Products documentation confirms `user_product_seller` as the seller migration tag, non-null `family_name` as the strongest sampled item marker, coexistence during migration, and no direct endpoint listing all seller families. The stock guidance confirms `warehouse_management` for multi-origin stock and the `/user-products/{user_product_id}/stock` family of resources. Phase 0 records these tags/markers but performs no User Product mutation. Highlights may mix ITEM, PRODUCT, and USER_PRODUCT entity types, so they remain a later typed capability rather than a comparable-listing implementation.
+
+No real authenticated MPE seller call has been performed. These are official documentation findings, not account observations.

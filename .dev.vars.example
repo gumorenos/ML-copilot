@@ -1,0 +1,9 @@
+# Non-secret local configuration. Copy to .dev.vars and replace placeholders.
+ML_CLIENT_ID=replace-with-mercado-libre-client-id
+ML_REDIRECT_URI=https://replace-with-staging-hostname.example/phase0/oauth/callback
+ML_API_BASE_URL=https://api.mercadolibre.com
+
+# Set these with Wrangler secrets or a local .dev.vars file. Never commit values.
+# ML_CLIENT_SECRET=
+# ML_ENCRYPTION_KEY=
+# PHASE0_OPERATOR_TOKEN=

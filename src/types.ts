@@ -15,6 +15,22 @@ export interface MeliUser {
   status?: string;
 }
 
+export interface ConnectedAccount {
+  accountId: string;
+  mlUserId: string;
+  siteId: string;
+  tags: string[];
+  status?: string;
+  connectionStatus: string;
+  connectedAt: string;
+  lastVerifiedAt?: string;
+}
+
+export interface AccountStore {
+  getConnected(): Promise<ConnectedAccount | null>;
+  saveConnected(account: ConnectedAccount): Promise<void>;
+}
+
 export interface MeliPicture {
   id?: string;
   url?: string;
@@ -114,6 +130,8 @@ export interface CredentialStore {
     now: number,
   ): Promise<boolean>;
   releaseRefresh(accountId: string, owner: string): Promise<void>;
+
+  putInitial?(accountId: string, encrypted: EncryptedCredential, expiresAt: number, now: number): Promise<void>;
 }
 
 export interface OAuthStateRecord {

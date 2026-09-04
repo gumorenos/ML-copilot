@@ -128,6 +128,26 @@ Lightweight ADR format. “Accepted” means the current project direction; “P
 - Status: Accepted for Phase 0; Cloudflare bundler/runtime remains provisional for Phase 1
 - Decision: Pin `typescript@5.9.3` and `@types/node@26.4.1` in the development lockfile. `npm run typecheck` must invoke `tsc --noEmit`; `npm run build` must emit compiled JavaScript with rewritten relative extensions and load the compiled runtime modules. Keep Node's native test runner for the current harness.
 - Alternatives: Node strip-only mode as a substitute for typechecking; an unpinned compiler; add a full React/Workers bundler before the application exists.
-- Evidence: The prior placeholder typecheck did not validate TypeScript. The current compiler passes the Phase 0 source and tests, while the emitted build passes the runtime-module smoke check. No Worker entry point exists yet, so a production Cloudflare bundler would be premature.
+- Evidence: The prior placeholder typecheck did not validate TypeScript. The current compiler passes the Phase 0 source and tests, while the emitted build passes the runtime-module smoke check. The Phase 0C Worker now has a Wrangler dry-run bundle check, while the full React/Vite application bundler remains a Phase 1 decision.
 - Rationale: Make type errors and emitted-runtime incompatibilities fail locally without introducing an unneeded application toolchain.
 - Consequences: `npm ci`, `npm run typecheck`, and `npm run build` become required local gates. A later Phase 1 decision must select and validate the Worker/React bundler and generated Cloudflare bindings.
+
+## ADR-014 — Use the official Cloudflare Vitest/Workerd D1 integration for Phase 0
+
+- Date: 2026-09-04
+- Status: Accepted for Phase 0; test configuration remains revisable in Phase 1
+- Decision: Pin Wrangler `4.129.0`, Vitest `4.1.11`, and `@cloudflare/vitest-plugin` `1.1.4`. Use `readD1Migrations` and `applyD1Migrations` with the checked-in `wrangler.jsonc` to run local Workerd/D1 integration tests. Keep Node-native tests for fast contract coverage.
+- Alternatives: D1-shaped fakes only; a third-party database emulator; deployed D1 in CI; add Miniflare directly.
+- Evidence: Cloudflare's current Workers testing and D1 recipes (checked 2026-09-04) prescribe the plugin, Workerd pool, and migration setup. The local suite passed 8/8 tests.
+- Rationale: Prove the actual SQL migration and conditional lease/state behavior without credentials, remote resources, or extra infrastructure.
+- Consequences: CI downloads Cloudflare tooling and local tests require compatible Node/Wrangler versions. Local success is not deployed-account evidence.
+
+## ADR-015 — Keep Phase 0 Worker narrow and operator-guarded
+
+- Date: 2026-09-04
+- Status: Accepted for Phase 0; operator authentication is temporary
+- Decision: Add only `GET /phase0/oauth/start`, public `GET /phase0/oauth/callback`, and protected `GET /phase0/capability`. Protect start/capability with a server-side `PHASE0_OPERATOR_TOKEN`; keep the callback public for Mercado Libre navigation. Return sanitized responses and expose no generic upstream proxy or seller write.
+- Alternatives: start the full React application; put the callback behind Cloudflare Access before testing; expose a public start route; use Hono or another router now.
+- Evidence: The Phase 0 gate needs only OAuth and read-only capability proof. Cloudflare Access interaction is a Phase 1 concern; the Worker route tests cover unauthorized, replay, wrong-site, upstream-error, redaction, and bounded-read paths.
+- Rationale: Smallest deployable proof that can complete the real callback without introducing UI, auth infrastructure, or business mutations.
+- Consequences: Staging must configure a temporary operator secret and replace/retire it before Phase 1. A future Access/JWT boundary and application router need a separate decision.

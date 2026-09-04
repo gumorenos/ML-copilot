@@ -18,7 +18,7 @@ These instructions apply to every change in this repository, whether made by Cod
 4. Check current official Mercado Libre and Cloudflare documentation before relying on behavior that may have changed.
 5. Preserve unrelated user changes. Do not reset, overwrite, or delete them.
 
-The Phase 0 branch may contain an isolated read-only capability harness under src/, scripts/, and migrations/. Treat it as a reviewable connectivity artifact, not as the application UI or permission to add seller operations. Do not promote it into the Worker runtime or begin Phase 1 without explicit instruction.
+The Phase 0 branch contains a reviewable read-only capability harness and a deliberately narrow Phase 0 Worker under src/, scripts/, migrations/, and test/. Treat it as a connectivity artifact, not as the application UI or permission to add seller operations. The Worker routes are limited to `/phase0/oauth/start`, `/phase0/oauth/callback`, and `/phase0/capability`; do not add product UI, seller writes, or Phase 1 features without explicit instruction.
 
 ## Product and architecture constraints
 

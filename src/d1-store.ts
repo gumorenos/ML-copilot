@@ -1,4 +1,4 @@
-import type { CredentialRecord, CredentialStore, EncryptedCredential, OAuthStateRecord, OAuthStateStore } from "./types.ts";
+import type { AccountStore, ConnectedAccount, CredentialRecord, CredentialStore, EncryptedCredential, OAuthStateRecord, OAuthStateStore } from "./types.ts";
 
 export interface D1RunResult {
   meta: { changes: number };
@@ -12,6 +12,47 @@ export interface D1PreparedLike {
 
 export interface D1DatabaseLike {
   prepare(query: string): D1PreparedLike;
+}
+
+interface AccountRow extends Record<string, unknown> {
+  id: unknown;
+  ml_user_id: unknown;
+  site_id: unknown;
+  tags_json: unknown;
+  connection_status: unknown;
+  connected_at: unknown;
+  last_verified_at: unknown;
+}
+
+export class D1AccountStore implements AccountStore {
+  private readonly db: D1DatabaseLike;
+
+  constructor(db: D1DatabaseLike) {
+    this.db = db;
+  }
+
+  async getConnected(): Promise<ConnectedAccount | null> {
+    const row = await this.db.prepare(
+      "SELECT id, ml_user_id, site_id, tags_json, connection_status, connected_at, last_verified_at FROM accounts ORDER BY COALESCE(last_verified_at, connected_at) DESC LIMIT 1",
+    ).first<AccountRow>();
+    if (!row) return null;
+    return parseAccountRow(row);
+  }
+
+  async saveConnected(account: ConnectedAccount): Promise<void> {
+    validateConnectedAccount(account);
+    await this.db.prepare(
+      "INSERT INTO accounts (id, ml_user_id, site_id, tags_json, connection_status, connected_at, last_verified_at, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?6, ?6) ON CONFLICT(ml_user_id) DO UPDATE SET id = excluded.id, site_id = excluded.site_id, tags_json = excluded.tags_json, connection_status = excluded.connection_status, connected_at = excluded.connected_at, last_verified_at = excluded.last_verified_at, updated_at = excluded.updated_at",
+    ).bind(
+      account.accountId,
+      account.mlUserId,
+      account.siteId,
+      JSON.stringify(account.tags),
+      account.connectionStatus,
+      account.connectedAt,
+      account.lastVerifiedAt ?? null,
+    ).run();
+  }
 }
 
 interface CredentialRow extends Record<string, unknown> {
@@ -36,6 +77,17 @@ export class D1CredentialStore implements CredentialStore {
     ).bind(accountId).first<CredentialRow>();
     if (!row) return null;
     return parseCredentialRow(row, accountId);
+  }
+
+  async putInitial(accountId: string, encrypted: EncryptedCredential, expiresAt: number, now: number): Promise<void> {
+    if (!accountId) throw new Error("Credential account ID is required");
+    assertInteger(now, "credential time");
+    assertInteger(expiresAt, "credential expiry");
+    if (expiresAt < 0) throw new Error("Credential expiry cannot be negative");
+    if (!isEncryptedCredential(encrypted)) throw new Error("Initial credential has an invalid encrypted shape");
+    await this.db.prepare(
+      "INSERT INTO oauth_credentials (account_id, encrypted_json, expires_at, credential_version, refresh_lease_owner, refresh_lease_until, updated_at) VALUES (?1, ?2, ?3, 1, NULL, NULL, ?4) ON CONFLICT(account_id) DO UPDATE SET encrypted_json = excluded.encrypted_json, expires_at = excluded.expires_at, credential_version = oauth_credentials.credential_version + 1, refresh_lease_owner = NULL, refresh_lease_until = NULL, updated_at = excluded.updated_at",
+    ).bind(accountId, JSON.stringify(encrypted), expiresAt, new Date(now).toISOString()).run();
   }
 
   async tryAcquireRefresh(accountId: string, expectedVersion: number, owner: string, now: number, leaseUntil: number): Promise<boolean> {
@@ -148,6 +200,7 @@ function parseCredentialRow(row: CredentialRow, requestedAccountId: string): Cre
   const expiresAt = nonNegativeInteger(row.expires_at, "credential expiry");
   const refreshLeaseOwner = nullableString(row.refresh_lease_owner, "refresh lease owner");
   const refreshLeaseUntil = nullableInteger(row.refresh_lease_until, "refresh lease expiry");
+  if ((refreshLeaseOwner === null) !== (refreshLeaseUntil === null)) throw new Error("Stored credential has an inconsistent refresh lease");
   return {
     accountId: row.account_id,
     encrypted: parsed,
@@ -156,6 +209,35 @@ function parseCredentialRow(row: CredentialRow, requestedAccountId: string): Cre
     ...(refreshLeaseOwner !== null ? { refreshLeaseOwner } : {}),
     ...(refreshLeaseUntil !== null ? { refreshLeaseUntil } : {}),
   };
+}
+
+function parseAccountRow(row: AccountRow): ConnectedAccount {
+  if (typeof row.id !== "string" || row.id.length === 0) throw new Error("Stored account has an invalid account ID");
+  if (typeof row.ml_user_id !== "string" || row.ml_user_id.length === 0) throw new Error("Stored account has an invalid Mercado Libre user ID");
+  if (row.site_id !== "MPE") throw new Error("Stored account is not an MPE account");
+  if (typeof row.tags_json !== "string") throw new Error("Stored account has invalid tags JSON");
+  let tags: unknown;
+  try { tags = JSON.parse(row.tags_json); } catch { throw new Error("Stored account has malformed tags JSON"); }
+  if (!Array.isArray(tags) || !tags.every((tag) => typeof tag === "string")) throw new Error("Stored account has invalid tags");
+  if (typeof row.connection_status !== "string" || row.connection_status.length === 0) throw new Error("Stored account has invalid connection status");
+  if (typeof row.connected_at !== "string" || row.connected_at.length === 0) throw new Error("Stored account has invalid connected timestamp");
+  if (row.last_verified_at !== null && row.last_verified_at !== undefined && (typeof row.last_verified_at !== "string" || row.last_verified_at.length === 0)) throw new Error("Stored account has invalid verification timestamp");
+  return {
+    accountId: row.id,
+    mlUserId: row.ml_user_id,
+    siteId: "MPE",
+    tags,
+    connectionStatus: row.connection_status,
+    connectedAt: row.connected_at,
+    ...(typeof row.last_verified_at === "string" ? { lastVerifiedAt: row.last_verified_at } : {}),
+  };
+}
+
+function validateConnectedAccount(account: ConnectedAccount): void {
+  if (!account.accountId || !account.mlUserId) throw new Error("Connected account IDs are required");
+  if (account.siteId !== "MPE") throw new Error("Only MPE accounts are supported");
+  if (!Array.isArray(account.tags) || !account.tags.every((tag) => typeof tag === "string")) throw new Error("Connected account tags must be strings");
+  if (!account.connectionStatus || !account.connectedAt) throw new Error("Connected account status and timestamp are required");
 }
 
 function parseOAuthStateRow(row: OAuthStateRow): ParsedOAuthStateRow {
