@@ -42,3 +42,15 @@ test("redirect URI validation rejects non-HTTPS callbacks", () => {
   assert.throws(() => assertHttpsRedirectUri("http://example.test/callback"), /HTTPS/);
   assert.doesNotThrow(() => assertHttpsRedirectUri("https://example.test/callback"));
 });
+
+test("state consumed at timestamp zero cannot be replayed", async () => {
+  const store = new MemoryOAuthStateStore();
+  const transaction = await createOAuthTransaction(store, 0, 100);
+  assert.equal(await consumeOAuthState(store, transaction.state, 0), transaction.codeVerifier);
+  await assert.rejects(() => consumeOAuthState(store, transaction.state, 0), /Invalid, expired, or already-consumed/);
+});
+
+test("authorization URL builder rejects an insecure redirect itself", () => {
+  assert.throws(() => buildAuthorizationUrl({ clientId: "client", redirectUri: "http://example.test/callback", state: "state", codeChallenge: "challenge" }), /HTTPS/);
+  assert.throws(() => buildAuthorizationUrl({ clientId: "client", redirectUri: "https://example.test/callback#fragment", state: "state", codeChallenge: "challenge" }), /fragment/);
+});

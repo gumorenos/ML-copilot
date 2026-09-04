@@ -100,3 +100,56 @@ test("item multiget bounds request size", async () => {
   const client = new MercadoLibreClient({ fetchImpl: async () => jsonResponse([]) });
   await assert.rejects(() => client.getItems("access", Array.from({ length: 21 }, (_, index) => String(index))), /at most 20/);
 });
+
+test("seller search rejects non-integral pagination inputs", async () => {
+  const client = new MercadoLibreClient({ fetchImpl: async () => jsonResponse({ seller_id: "seller", paging: { total: 0, limit: 20, offset: 0 }, results: [] }) });
+  await assert.rejects(() => client.searchSellerItems("access", "seller", { limit: 1.5 }), /limit must be a safe integer/);
+  await assert.rejects(() => client.searchSellerItems("access", "seller", { offset: -1.5 }), /offset must be a safe integer/);
+});
+
+test("item parsing tolerates nullable User Product fields and rejects negative prices", async () => {
+  const nullableClient = new MercadoLibreClient({ apiBaseUrl: "https://api.example.test", fetchImpl: async () => jsonResponse({ id: "MPE123", site_id: "MPE", family_id: null, user_product_id: null, available_quantity: null, pictures: null, attributes: null }) });
+  const item = await nullableClient.getItem("access", "MPE123");
+  assert.equal(item.id, "MPE123");
+  assert.equal("familyId" in item, false);
+  assert.equal("userProductId" in item, false);
+  assert.equal("availableQuantity" in item, false);
+  assert.equal("pictures" in item, false);
+  const negativeClient = new MercadoLibreClient({ apiBaseUrl: "https://api.example.test", fetchImpl: async () => jsonResponse({ id: "MPE123", price: -1 }) });
+  await assert.rejects(() => negativeClient.getItem("access", "MPE123"), MercadoLibreSchemaError);
+});
+
+test("forbidden responses and malformed JSON are classified without retries", async () => {
+  const forbidden = new MercadoLibreClient({ fetchImpl: async () => jsonResponse({ message: "forbidden", error: "forbidden" }, 403) });
+  await assert.rejects(() => forbidden.getMe("access"), (error: unknown) => error instanceof MercadoLibreApiError && error.status === 403 && error.code === "forbidden");
+  const malformed = new MercadoLibreClient({ fetchImpl: async () => new Response("{", { status: 500, headers: { "content-type": "application/json" } }) });
+  await assert.rejects(() => malformed.getMe("access"), (error: unknown) => error instanceof MercadoLibreApiError && error.status === 500 && /invalid JSON/.test(error.message));
+});
+test("Retry-After HTTP dates are honored for bounded read retries", async () => {
+  let calls = 0;
+  const sleeps: number[] = [];
+  const client = new MercadoLibreClient({
+    apiBaseUrl: "https://api.example.test",
+    now: () => 1_000,
+    sleep: async (milliseconds) => { sleeps.push(milliseconds); },
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) return jsonResponse({ message: "slow down" }, 429, { "retry-after": new Date(2_000).toUTCString() });
+      return jsonResponse({ id: "seller", site_id: "MPE", tags: [] });
+    },
+  });
+  assert.equal((await client.getMe("access")).siteId, "MPE");
+  assert.deepEqual(sleeps, [1_000]);
+});
+
+test("network failures are mapped without retrying a read indefinitely", async () => {
+  let calls = 0;
+  const client = new MercadoLibreClient({ apiBaseUrl: "https://api.example.test", fetchImpl: async () => { calls += 1; throw new Error("socket failed"); } });
+  await assert.rejects(() => client.getMe("access"), (error: unknown) => error instanceof MercadoLibreApiError && error.status === 0 && /network request failed/.test(error.message));
+  assert.equal(calls, 1);
+});
+
+test("item multiget rejects empty opaque identifiers", async () => {
+  const client = new MercadoLibreClient({ fetchImpl: async () => jsonResponse([]) });
+  await assert.rejects(() => client.getItems("access", ["MPE123", ""]), /non-empty opaque strings/);
+});

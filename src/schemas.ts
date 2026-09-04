@@ -96,25 +96,30 @@ export function parseItemBatch(value: unknown): ItemBatch {
 }
 
 function parseItem(object: Record<string, unknown>): MeliItem {
-  const pictures = object.pictures === undefined ? undefined : array(object.pictures, "item.pictures").map((value) => parsePicture(record(value, "picture")));
-  const attributes = object.attributes === undefined ? undefined : array(object.attributes, "item.attributes").map((value) => parseAttribute(record(value, "attribute")));
+  const pictures = object.pictures === undefined || object.pictures === null ? undefined : array(object.pictures, "item.pictures").map((value) => parsePicture(record(value, "picture")));
+  const attributes = object.attributes === undefined || object.attributes === null ? undefined : array(object.attributes, "item.attributes").map((value) => parseAttribute(record(value, "attribute")));
   const familyName = object.family_name === null ? null : optionalString(object.family_name);
+  const sellerId = optionalId(object.seller_id, "item.seller_id");
+  const price = optionalNonNegativeNumber(object.price, "item.price");
+  const availableQuantity = optionalNonNegativeInt(object.available_quantity, "item.available_quantity");
+  const familyId = optionalId(object.family_id, "item.family_id");
+  const userProductId = optionalId(object.user_product_id, "item.user_product_id");
   return {
     id: requiredId(object.id, "item.id"),
     ...(optionalString(object.site_id) !== undefined ? { siteId: optionalString(object.site_id) } : {}),
-    ...(object.seller_id !== undefined ? { sellerId: requiredId(object.seller_id, "item.seller_id") } : {}),
+    ...(sellerId !== undefined ? { sellerId } : {}),
     ...(optionalString(object.title) !== undefined ? { title: optionalString(object.title) } : {}),
     ...(optionalString(object.category_id) !== undefined ? { categoryId: optionalString(object.category_id) } : {}),
     ...(optionalString(object.condition) !== undefined ? { condition: optionalString(object.condition) } : {}),
-    ...(optionalNumber(object.price) !== undefined ? { price: optionalNumber(object.price) } : {}),
+    ...(price !== undefined ? { price } : {}),
     ...(optionalString(object.currency_id) !== undefined ? { currencyId: optionalString(object.currency_id) } : {}),
-    ...(optionalNumber(object.available_quantity) !== undefined ? { availableQuantity: nonNegativeInt(object.available_quantity, "item.available_quantity") } : {}),
+    ...(availableQuantity !== undefined ? { availableQuantity } : {}),
     ...(optionalString(object.status) !== undefined ? { status: optionalString(object.status) } : {}),
     ...(object.sub_status !== undefined ? { subStatus: optionalStringArray(object.sub_status) ?? [] } : {}),
     ...(object.tags !== undefined ? { tags: optionalStringArray(object.tags) ?? [] } : {}),
     ...(familyName !== undefined ? { familyName } : {}),
-    ...(object.family_id !== undefined ? { familyId: requiredId(object.family_id, "item.family_id") } : {}),
-    ...(object.user_product_id !== undefined ? { userProductId: requiredId(object.user_product_id, "item.user_product_id") } : {}),
+    ...(familyId !== undefined ? { familyId } : {}),
+    ...(userProductId !== undefined ? { userProductId } : {}),
     ...(optionalString(object.catalog_product_id) !== undefined ? { catalogProductId: optionalString(object.catalog_product_id) } : {}),
     ...(pictures !== undefined ? { pictures } : {}),
     ...(attributes !== undefined ? { attributes } : {}),
@@ -164,10 +169,21 @@ function optionalStringArray(value: unknown): string[] | undefined {
   return value as string[];
 }
 
-function optionalNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+function optionalNonNegativeNumber(value: unknown, label: string): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) throw new RuntimeValidationError(`Invalid ${label}`);
+  return value;
 }
 
+function optionalNonNegativeInt(value: unknown, label: string): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  return nonNegativeInt(value, label);
+}
+
+function optionalId(value: unknown, label: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  return requiredId(value, label);
+}
 function requiredId(value: unknown, label: string): string {
   if (typeof value === "string" && value.length > 0) return value;
   if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return String(value);

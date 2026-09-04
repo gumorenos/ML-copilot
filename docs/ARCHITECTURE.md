@@ -79,7 +79,7 @@ The current branch contains a deliberately non-UI proof, not the application she
 
 - OAuth and PKCE helpers create and consume one-time state; the authorization code exchange stays server-side.
 - The Mercado Libre adapter exposes only token exchange/refresh and read-only users/items methods. Runtime schemas reject malformed upstream data, and read retries are bounded.
-- AES-GCM encrypts credential pairs before persistence. The D1 store uses credential-version compare-and-set and an expiring refresh lease; a memory store provides deterministic race tests.
+- AES-GCM encrypts credential pairs before persistence. The D1 store uses credential-version compare-and-set and an expiring refresh lease; memory-store races and D1-shaped contract tests exercise the coordination paths locally, while deployed D1 behavior remains unverified.
 - The read-only probe confirms MPE before listing search, hydrates at most 20 item IDs, and emits field-presence summaries rather than raw seller payloads.
 - Seller-model classification preserves opaque IDs and distinguishes legacy Items, User Products, coexistence, and unknown from seller tags plus sampled item markers. It records warehouse capability tags for future stock routing but performs no User Product writes.
 

@@ -24,7 +24,7 @@ export class MemoryOAuthStateStore implements OAuthStateStore {
 
   async consume(stateHash: string, now: number): Promise<string | null> {
     const record = this.records.get(stateHash);
-    if (!record || record.consumedAt || record.expiresAt <= now) return null;
+    if (!record || record.consumedAt !== undefined || record.expiresAt <= now) return null;
     record.consumedAt = now;
     return record.codeVerifier;
   }
@@ -41,6 +41,8 @@ export async function createPkcePair(): Promise<PkcePair> {
 }
 
 export async function createOAuthTransaction(store: OAuthStateStore, now = Date.now(), ttlMs = 10 * 60 * 1000): Promise<OAuthTransaction> {
+  if (!Number.isFinite(now) || !Number.isInteger(now)) throw new Error("OAuth transaction time must be an integer timestamp");
+  if (!Number.isFinite(ttlMs) || !Number.isInteger(ttlMs) || ttlMs <= 0) throw new Error("OAuth transaction TTL must be a positive integer");
   const state = randomBase64Url(32);
   const pkce = await createPkcePair();
   const expiresAt = now + ttlMs;
@@ -49,6 +51,7 @@ export async function createOAuthTransaction(store: OAuthStateStore, now = Date.
 }
 
 export async function consumeOAuthState(store: OAuthStateStore, state: string, now = Date.now()): Promise<string> {
+  if (!state) throw new Error("Invalid, expired, or already-consumed OAuth state");
   const verifier = await store.consume(await sha256Base64Url(state), now);
   if (!verifier) throw new Error("Invalid, expired, or already-consumed OAuth state");
   return verifier;
@@ -63,6 +66,7 @@ export function buildAuthorizationUrl(input: {
   scope?: string;
 }): string {
   if (!input.clientId || !input.redirectUri || !input.state || !input.codeChallenge) throw new Error("OAuth URL requires client, redirect, state, and PKCE challenge");
+  assertHttpsRedirectUri(input.redirectUri);
   const host = AUTHORIZATION_HOSTS[input.siteId ?? "MPE"];
   const url = new URL(`https://${host}/authorization`);
   url.searchParams.set("response_type", "code");
@@ -78,6 +82,7 @@ export function buildAuthorizationUrl(input: {
 export function assertHttpsRedirectUri(redirectUri: string): void {
   const url = new URL(redirectUri);
   if (url.protocol !== "https:") throw new Error("Mercado Libre redirect URI must use HTTPS");
+  if (url.hash) throw new Error("Mercado Libre redirect URI must not contain a fragment");
 }
 
 export function decodeStateForDiagnostics(value: string): Uint8Array {

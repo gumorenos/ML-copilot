@@ -2,7 +2,7 @@
 
 ML Copilot is a personal, mobile-first web application for operating one small Mercado Libre seller account in Peru. It aims to make day-to-day listing, sales, analytics, and market-review work simpler while keeping Mercado Libre as the operational source of truth.
 
-The project is **in Phase 0: read-only connectivity proof**. The repository contains the planning baseline plus a small, dependency-free TypeScript harness for OAuth/PKCE helpers, encrypted credentials, rotating-refresh coordination, MPE identity/listing reads, item hydration, and seller-model classification. It is not the product UI and it cannot perform seller writes.
+The project is **in Phase 0: read-only connectivity proof**. The repository contains the planning baseline plus a small TypeScript harness for OAuth/PKCE helpers, encrypted credentials, rotating-refresh coordination, MPE identity/listing reads, item hydration, and seller-model classification. It is not the product UI and it cannot perform seller writes.
 
 ## Target user and scope
 
@@ -40,7 +40,7 @@ Owner browser
   -> Cloudflare Access
   -> one Cloudflare Worker
        - React/Vite static application
-       - TypeScript API and scheduled handler
+       - TypeScript 5.9.3 (development compiler) API and scheduled handler
        - application/domain services
        - Mercado Libre REST client
        - D1 repositories
@@ -57,7 +57,8 @@ See [Architecture](docs/ARCHITECTURE.md), [conceptual data model](docs/DATA_MODE
 
 ## Intended development stack
 
-- TypeScript
+- TypeScript 5.9.3 (development compiler)
+- @types/node 26.4.1 (development-only Node typings)
 - React and Vite
 - one Cloudflare Worker serving the SPA and `/api/*`
 - Cloudflare D1 with versioned SQL migrations
@@ -67,7 +68,7 @@ See [Architecture](docs/ARCHITECTURE.md), [conceptual data model](docs/DATA_MODE
 - a lightweight Workers-compatible HTTP router, provisionally Hono
 - Node native test runner is used for the current proof to avoid an unverified dependency stack. Vitest, Workers test tooling, React Testing Library, and Playwright remain Phase 1 choices.
 
-Versions and exact package choices will be pinned and validated when Phase 1 is authorized. They are not implied to be installed today.
+The Phase 0 compiler dependencies are pinned in package.json/package-lock.json. The Cloudflare Worker, React, Vite, router, and deployment toolchain remain deferred until Phase 1 is authorized.
 
 ## Local setup
 
@@ -75,11 +76,13 @@ The current proof is runnable with Node 24 or newer:
 
 1. Clone the repository.
 2. Read this file and [AGENTS.md](AGENTS.md).
-3. Run npm test for the mocked security/API matrix.
-4. Run npm run build for the runtime module-load check.
-5. Review [Phase 0 capability report](docs/PHASE0_CAPABILITY_REPORT.md).
-6. To start the real read-only check, configure the local variables documented in [Implementation plan](docs/IMPLEMENTATION_PLAN.md) and run npm run phase0:probe.
-7. Obtain explicit authorization before starting Phase 1.
+3. Run npm ci to install the pinned development toolchain.
+4. Run npm run typecheck for strict static TypeScript validation.
+5. Run npm test for the mocked security/API matrix.
+6. Run npm run build to emit dist/ and load the compiled runtime modules.
+7. Review [Phase 0 capability report](docs/PHASE0_CAPABILITY_REPORT.md).
+8. To start the real read-only check, configure the local variables documented in [Implementation plan](docs/IMPLEMENTATION_PLAN.md) and run npm run phase0:probe.
+9. Obtain explicit authorization before starting Phase 1.
 
 The probe first prints an authorization URL and creates an ignored short-lived transaction file. After the owner completes authorization, rerun it with the returned code and callback state. Local secret files such as .dev.vars and .env are ignored and must never be committed.
 
@@ -118,7 +121,7 @@ D1 is expected to be sufficient for the personal workload. Cron Triggers will ru
 - No Mercado Libre application credentials or seller account were available in this work session. The real MPE read-only gate is therefore pending.
 - Private MPE endpoint behavior, seller/listing model, and all write behavior still require controlled verification.
 - Unauthenticated requests to several nominally public MPE resources returned `403` during a dated probe; authenticated behavior remains to be tested.
-- Static TypeScript typechecking is not yet available because no compiler is installed in this checkout and package installation was blocked by the local registry TLS environment. The test and runtime checks do not claim to replace strict typechecking.
+- Real TypeScript typechecking is now available through the pinned compiler and passes for the current Phase 0 code. The build emits compiled JavaScript to ignored dist/ and performs a compiled runtime-module smoke check.
 - API availability, quotas, response fields, category-specific rules, and Cloudflare account configuration can vary and must be checked at implementation time.
 - No UI language, accessibility baseline beyond WCAG intent, AI provider, or image provider has been selected.
 - The repository has no selected open-source license; no third-party source code has been copied.

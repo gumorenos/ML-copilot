@@ -4,9 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "node --experimental-strip-types scripts/build-check.ts",
-    "typecheck": "node --experimental-strip-types scripts/typecheck-note.ts",
+    "build": "tsc -p tsconfig.build.json && node dist/scripts/build-check.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --experimental-strip-types --test \"src/**/*.test.ts\"",
     "phase0:probe": "node --experimental-strip-types scripts/phase0-probe.ts"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.1",
+    "typescript": "5.9.3"
   }
 }

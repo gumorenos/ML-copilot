@@ -18,7 +18,7 @@ Status date: 2026-09-02. A phase starts only with explicit instruction after its
 - Official Mercado Libre and Cloudflare documentation researched.
 - Public repository/license/runtime assessments recorded.
 - Architecture, conceptual D1 model, threat controls, test strategy, and decisions proposed.
-- A minimal dependency-free read-only harness is implemented on the Phase 0 branch: OAuth/PKCE, encrypted credential round-trip, refresh lease/CAS contract, MPE identity/listing/item reads, runtime schemas, and seller-model classification.
+- A minimal read-only TypeScript harness is implemented on the Phase 0 branch: OAuth/PKCE, encrypted credential round-trip, refresh lease/CAS contract, MPE identity/listing/item reads, runtime schemas, and seller-model classification.
 - No seller credentials were available for this work session; no real MPE read-only call has been made and no seller data has been modified.
 
 ### Remaining work

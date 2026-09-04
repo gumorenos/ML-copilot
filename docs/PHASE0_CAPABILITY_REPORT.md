@@ -1,11 +1,16 @@
 # Phase 0 capability report
 
-Status: PARTIAL (2026-09-03)
+Status: PARTIAL (2026-09-04)
 
 This file is a review artifact, not an application feature. It records what the Phase 0 branch can prove, what was tested with mocks, and what still requires the owner's approved Mercado Libre application and intended MPE seller account. It must never contain access tokens, refresh tokens, client secrets, authorization codes, buyer data, or a complete private seller payload.
 
-Automated result for this branch: npm test passed 26/26 tests; npm run build passed the runtime module-load check. Static TypeScript typechecking was not available because the compiler is not installed in the checkout. No real MPE read-only call was run.
+Automated result for this branch after the engineering-hardening pass: `npm run typecheck` passes with TypeScript 5.9.3, `npm test` passes 38/38 tests, and `npm run build` emits compiled JavaScript to `dist/` before the compiled runtime-module smoke check passes. The D1 adapter has four D1-compatible contract tests; these are not a deployed Cloudflare D1 integration. No real MPE read-only call was run.
 
+## Engineering-hardening evidence
+
+The local toolchain is now real and reproducible: `package-lock.json` pins `typescript@5.9.3` and `@types/node@26.4.1`; `npm run typecheck` invokes `tsc --noEmit`; and `npm run build` invokes `tsc` with relative `.ts` imports rewritten for emitted JavaScript, then loads the compiled runtime modules. Node's native test runner remains the test harness.
+
+The D1 evidence level is contract/mock only. `src/d1-store.test.ts` exercises the exact conditional lease/CAS query behavior through a deterministic D1-shaped adapter, including one-owner acquisition, stale-writer rejection, lease recovery, one-time OAuth-state consumption, and malformed encrypted-row rejection. It does not prove Cloudflare's deployed transaction behavior; that remains an explicit later integration gate.
 ## Scope and safety
 
 The proof is strictly read-only with respect to Mercado Libre seller/business data. The adapter contains token exchange/refresh POST calls and read-only users/items calls only. It has no listing, order, shipping, message, image, price, stock, pause, activate, close, relist, or purchase operation.
@@ -24,7 +29,7 @@ MPE seller account -> OAuth Authorization Code + S256 PKCE + state -> server-sid
 | token exchange and returned expires_in | Request/response mocked | Not run | PASS in mock; external gate pending |
 | encrypted credential round-trip | AES-GCM tested | Not run with real token | PASS with synthetic tokens |
 | rotating refresh replacement | Mocked rotating response | Not run against account | PASS in mock; external gate pending |
-| concurrent refresh serialization | Two managers, one mocked upstream refresh | Not run in deployed D1 | PASS in memory store; D1 integration pending |
+| concurrent refresh serialization | Two managers plus D1-compatible CAS/lease contract fixtures | Not run in deployed D1 | PASS in mocks/contracts; deployed D1 integration pending |
 | users/me parsing and MPE detection | MPE and wrong-site fixtures | Not run | PASS in mock; external gate pending |
 | seller item search/pagination parsing | Fixture with opaque IDs and paging | Not run | PASS in mock; external gate pending |
 | representative item detail parsing | Multiget success plus per-item failure | Not run | PASS in mock; external gate pending |
@@ -61,12 +66,13 @@ The registered redirect URI must exactly equal ML_REDIRECT_URI and use HTTPS. Th
 
 - src/oauth.ts and src/oauth.test.ts: state, S256 PKCE, MPE authorization URL.
 - src/crypto.ts and src/crypto.test.ts: AES-GCM encryption with authenticated account context.
-- src/refresh.ts, src/memory-store.ts, src/d1-store.ts, and src/refresh.test.ts: rotating refresh lease/CAS contract and race tests.
+- src/refresh.ts, src/memory-store.ts, src/d1-store.ts, src/refresh.test.ts, and src/d1-store.test.ts: rotating refresh lease/CAS contract, in-memory races, and D1-compatible conditional-update tests.
 - src/meli-client.ts and src/meli-client.test.ts: narrow REST adapter, runtime response validation, bounded read retries, and error mapping.
 - src/model.ts and src/model.test.ts: conservative seller-model classification.
 - src/probe.ts and src/probe.test.ts: sanitized MPE read-only capability report.
 - scripts/phase0-probe.ts: operator-run read-only probe; no UI or seller mutation route.
 - migrations/0001_phase0_auth.sql: minimal auth/state D1 schema only.
+- package.json, package-lock.json, tsconfig.json, and tsconfig.build.json: pinned TypeScript validation and emitted-build configuration.
 - docs/: durable design, evidence, security, QA, roadmap, and reuse documentation.
 
 ## Gate decision

@@ -92,6 +92,16 @@ Lightweight ADR format. “Accepted” means the current project direction; “P
 - Rationale: A narrow adapter for the early read-only endpoints is smaller than adapting a full agent/MCP stack.
 - Consequences: More local contract tests and maintenance. Re-evaluate selected MIT utilities if clean-room implementation becomes larger/riskier, after choosing this repository's license.
 
+## ADR-010 — Conceptual D1 model grows by phase
+
+- Date: 2026-09-01
+- Status: Accepted
+- Decision: Phase 1 creates only account/OAuth/audit tables. Change, order, snapshot, comparable, AI, and image tables arrive with their owning phases.
+- Alternatives: build the full future schema in Phase 1; use schemaless response storage.
+- Evidence: Product phases and API contracts remain partly unverified.
+- Rationale: Avoid speculative migrations and unused retention obligations.
+- Consequences: `DATA_MODEL.md` is guidance, not a migration specification; each added table needs its own access paths, retention, migration, and tests.
+
 ## ADR-011 — Treat Mercado Libre identifiers as opaque text
 
 - Date: 2026-09-02
@@ -110,14 +120,14 @@ Lightweight ADR format. “Accepted” means the current project direction; “P
 - Alternatives: full UI scaffold; an entire MCP/SDK dependency; Durable Objects/Redis/Queues for refresh locking; full application schema.
 - Evidence: The current gate is an authenticated read-only chain, the application has one owner/low concurrency, D1 supports SQL migrations and conditional updates, and the inspected third-party stacks are broader than required or not Workers-native.
 - Rationale: The smallest vertical proof reduces external/API risk before Phase 1 infrastructure and prevents accidental seller writes.
-- Consequences: Real MPE evidence and a later static typecheck remain explicit gates; the D1 conditional update must be exercised in a Worker/D1 integration test before production use.
+- Consequences: Real MPE evidence and a deployed Worker/D1 integration test remain explicit gates; local compiler and D1-shaped contract checks do not replace either gate.
 
-## ADR-010 — Conceptual D1 model grows by phase
+## ADR-013 — Pin a real TypeScript validation/build toolchain for Phase 0
 
-- Date: 2026-09-01
-- Status: Accepted
-- Decision: Phase 1 creates only account/OAuth/audit tables. Change, order, snapshot, comparable, AI, and image tables arrive with their owning phases.
-- Alternatives: build the full future schema in Phase 1; use schemaless response storage.
-- Evidence: Product phases and API contracts remain partly unverified.
-- Rationale: Avoid speculative migrations and unused retention obligations.
-- Consequences: `DATA_MODEL.md` is guidance, not a migration specification; each added table needs its own access paths, retention, migration, and tests.
+- Date: 2026-09-04
+- Status: Accepted for Phase 0; Cloudflare bundler/runtime remains provisional for Phase 1
+- Decision: Pin `typescript@5.9.3` and `@types/node@26.4.1` in the development lockfile. `npm run typecheck` must invoke `tsc --noEmit`; `npm run build` must emit compiled JavaScript with rewritten relative extensions and load the compiled runtime modules. Keep Node's native test runner for the current harness.
+- Alternatives: Node strip-only mode as a substitute for typechecking; an unpinned compiler; add a full React/Workers bundler before the application exists.
+- Evidence: The prior placeholder typecheck did not validate TypeScript. The current compiler passes the Phase 0 source and tests, while the emitted build passes the runtime-module smoke check. No Worker entry point exists yet, so a production Cloudflare bundler would be premature.
+- Rationale: Make type errors and emitted-runtime incompatibilities fail locally without introducing an unneeded application toolchain.
+- Consequences: `npm ci`, `npm run typecheck`, and `npm run build` become required local gates. A later Phase 1 decision must select and validate the Worker/React bundler and generated Cloudflare bindings.

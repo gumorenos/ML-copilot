@@ -49,13 +49,15 @@ Reconcile results manually, update API evidence/decisions, add only sanitized fi
 
 ## Running the proof safely
 
-1. Run npm test. This uses mocked responses and never contacts Mercado Libre.
-2. Run npm run build. This imports every runtime module with Node's type stripping.
-3. Run npm run phase0:probe with ML_CLIENT_ID and an exact HTTPS ML_REDIRECT_URI. The command writes only an ignored .phase0-oauth.json transaction containing short-lived state/PKCE material and prints an authorization URL.
-4. Complete authorization in the intended administrator/main account. Capture the code and state from the registered callback without recording the full callback URL in logs or screenshots.
-5. Rerun with ML_AUTH_CODE, ML_CALLBACK_STATE, ML_CLIENT_SECRET, ML_ENCRYPTION_KEY, and the same client ID/redirect URI. The probe exchanges the code server-side, checks encryption in memory, calls users/me, confirms MPE, lists seller item IDs, hydrates at most 20 items, and emits a sanitized report.
-6. Review docs/PHASE0_CAPABILITY_REPORT.md and compare the aggregate count/sample to Seller Center. Record the seller tags and item markers without committing titles, URLs, buyer data, or credentials.
-7. If refresh testing is approved and safe, exercise one rotation using the durable D1 path or a controlled test account. Never retry an ambiguous rotating refresh blindly.
+1. Run npm ci with the pinned lockfile. If the host requires system trust roots, use Node's secure `--use-system-ca` mode; never disable TLS verification.
+2. Run npm run typecheck. This invokes the pinned TypeScript compiler and must fail on errors.
+3. Run npm test. This uses mocked responses and never contacts Mercado Libre.
+4. Run npm run build. This emits compiled JavaScript to ignored `dist/` and loads the compiled runtime modules.
+5. Run npm run phase0:probe with ML_CLIENT_ID and an exact HTTPS ML_REDIRECT_URI. The command writes only an ignored .phase0-oauth.json transaction containing short-lived state/PKCE material and prints an authorization URL.
+6. Complete authorization in the intended administrator/main account. Capture the code and state from the registered callback without recording the full callback URL in logs or screenshots.
+7. Rerun with ML_AUTH_CODE, ML_CALLBACK_STATE, ML_CLIENT_SECRET, ML_ENCRYPTION_KEY, and the same client ID/redirect URI. The probe exchanges the code server-side, checks encryption in memory, calls users/me, confirms MPE, lists seller item IDs, hydrates at most 20 items, and emits a sanitized report.
+8. Review docs/PHASE0_CAPABILITY_REPORT.md and compare the aggregate count/sample to Seller Center. Record the seller tags and item markers without committing titles, URLs, buyer data, or credentials.
+9. If refresh testing is approved and safe, exercise one rotation using the durable D1 path or a controlled test account. Never retry an ambiguous rotating refresh blindly.
 
 The harness has no callback Worker or deployed endpoint yet. A real OAuth run therefore needs an already deployed HTTPS callback that can return the code/state to the operator, or a temporary approved callback implementation. Creating that staging endpoint is a Phase 1 concern unless the owner supplies an existing registered callback.
 

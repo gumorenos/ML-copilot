@@ -166,15 +166,17 @@ Detailed scope is in `ROADMAP.md`; this section defines the minimum QA character
 
 For the current Phase 0 branch, required local checks are:
 
-- npm test (native Node tests; mocked Mercado Libre only);
-- npm run build (runtime module-load check);
-- npm run typecheck, recorded as unavailable until a TypeScript compiler is installed;
+- npm ci (pinned development dependencies; use a repaired system trust store or Node system-CA mode if the host requires it; never disable TLS validation);
+- npm run typecheck (real strict TypeScript compiler; current result 0 errors);
+- npm test (native Node tests; 38/38 passed; mocked Mercado Libre and D1-compatible contract fixtures only);
+- npm run build (TypeScript emits dist/ and the compiled runtime-module smoke check passes);
 - every required document exists, including the Phase 0 capability report;
 - every relative Markdown link resolves;
 - no trailing whitespace or patch conflict marker;
 - no secret-like local environment file is tracked;
 - `git diff --check` passes;
 - terminology and status do not contradict across README, architecture, roadmap, API, security, QA, and decisions;
+- D1 concurrency evidence is limited to the D1-compatible contract mock; a deployed Cloudflare D1 integration test remains a later gate;
 - no UI, seller mutation, order mutation, analytics, image, AI, or PWA feature was introduced.
 
 The real-account result must be reported separately as REAL MPE READ-ONLY. Mock success cannot mark P0 PASS. The explicit report template is docs/PHASE0_CAPABILITY_REPORT.md.

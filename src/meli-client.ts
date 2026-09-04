@@ -63,7 +63,9 @@ export class MercadoLibreClient {
     this.apiBaseUrl = (options.apiBaseUrl ?? DEFAULT_API_BASE).replace(/\/$/, "");
     this.now = options.now ?? (() => Date.now());
     this.sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
-    this.maxReadRetries = options.maxReadRetries ?? 1;
+    const maxReadRetries = options.maxReadRetries ?? 1;
+    if (!Number.isInteger(maxReadRetries) || maxReadRetries < 0) throw new Error("maxReadRetries must be a non-negative integer");
+    this.maxReadRetries = maxReadRetries;
   }
 
   async exchangeCode(input: OAuthExchangeInput): Promise<OAuthTokens> {
@@ -96,8 +98,10 @@ export class MercadoLibreClient {
 
   async searchSellerItems(accessToken: string, sellerId: string, query: SellerItemsQuery = {}): Promise<SellerItemsPage> {
     const params = new URLSearchParams();
-    params.set("limit", String(Math.min(Math.max(query.limit ?? 20, 1), 100)));
-    params.set("offset", String(Math.max(query.offset ?? 0, 0)));
+    const limit = boundedInteger(query.limit, 20, 1, 100, "limit");
+    const offset = boundedInteger(query.offset, 0, 0, Number.MAX_SAFE_INTEGER, "offset");
+    params.set("limit", String(limit));
+    params.set("offset", String(offset));
     if (query.status) params.set("status", query.status);
     if (query.searchType) params.set("search_type", query.searchType);
     if (query.scrollId) params.set("scroll_id", query.scrollId);
@@ -108,6 +112,7 @@ export class MercadoLibreClient {
   async getItems(accessToken: string, ids: string[]): Promise<ItemBatch> {
     if (ids.length === 0) return { items: [], failures: [] };
     if (ids.length > 20) throw new Error("Mercado Libre multiget accepts at most 20 item IDs");
+    if (ids.some((id) => typeof id !== "string" || id.length === 0)) throw new Error("Mercado Libre item IDs must be non-empty opaque strings");
     const query = ids.map((id) => encodeURIComponent(id)).join(",");
     const payload = await this.readJson(`/items?ids=${query}`, accessToken);
     return this.parse(() => parseItemBatch(payload), "items multiget");
@@ -175,6 +180,12 @@ export class MercadoLibreClient {
       throw new MercadoLibreSchemaError(`Mercado Libre returned an invalid ${resource} response`);
     }
   }
+}
+
+function boundedInteger(value: number | undefined, fallback: number, minimum: number, maximum: number, label: string): number {
+  const candidate = value ?? fallback;
+  if (!Number.isInteger(candidate) || !Number.isSafeInteger(candidate)) throw new Error(`Mercado Libre ${label} must be a safe integer`);
+  return Math.min(Math.max(candidate, minimum), maximum);
 }
 
 function extractError(value: unknown): { message: string; code?: string } {
