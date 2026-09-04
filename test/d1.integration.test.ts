@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { D1AccountStore, D1CredentialStore, D1OAuthStateStore } from "../src/d1-store.ts";
+import { D1AccountStore, D1CredentialStore, D1OAuthStateStore, D1RefreshVerificationStore } from "../src/d1-store.ts";
 import { decryptTokens, encryptTokens, generateEncryptionSecret, importEncryptionKey } from "../src/crypto.ts";
 import { decryptStateVerifier, encryptStateVerifier } from "../src/state-crypto.ts";
 import type { ConnectedAccount, OAuthTokens } from "../src/types.ts";
@@ -28,8 +28,8 @@ async function seedCredential(accountId: string, key: CryptoKey, now = 1_000): P
 
 describe("Phase 0 local workerd/D1 integration", () => {
   it("applies the Phase 0 migration and exposes only the minimal tables", async () => {
-    const result = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('accounts', 'oauth_states', 'oauth_credentials') ORDER BY name").all<{ name: string }>();
-    expect(result.results.map((row) => row.name)).toEqual(["accounts", "oauth_credentials", "oauth_states"]);
+    const result = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('accounts', 'oauth_states', 'oauth_credentials', 'phase0_refresh_verifications') ORDER BY name").all<{ name: string }>();
+    expect(result.results.map((row) => row.name)).toEqual(["accounts", "oauth_credentials", "oauth_states", "phase0_refresh_verifications"]);
   });
 
   it("persists opaque MPE account identity and capability tags", async () => {
@@ -132,5 +132,14 @@ describe("Phase 0 local workerd/D1 integration", () => {
       "INSERT INTO oauth_credentials (account_id, encrypted_json, expires_at, credential_version, refresh_lease_owner, refresh_lease_until, updated_at) VALUES (?1, ?2, 100, 1, 'owner', NULL, ?3)",
     ).bind(partialAccount, JSON.stringify(encrypted), new Date().toISOString()).run();
     await expect(new D1CredentialStore(env.DB).get(partialAccount)).rejects.toThrow(/inconsistent refresh lease/);
+  });
+
+  it("claims one forced refresh verification and records its terminal result", async () => {
+    const { accountId } = await seedAccount();
+    const store = new D1RefreshVerificationStore(env.DB);
+    expect(await Promise.all([store.claim(accountId, 1, 1_000), store.claim(accountId, 1, 1_000)])).toEqual([true, false]);
+    await store.complete(accountId, "succeeded", 1, 1_100, 2);
+    expect(await store.get(accountId)).toMatchObject({ accountId, status: "succeeded", credentialVersionBefore: 1, credentialVersionAfter: 2 });
+    expect(await store.claim(accountId, 2, 1_200)).toBe(false);
   });
 });

@@ -1,12 +1,12 @@
-import { D1AccountStore, D1CredentialStore, D1OAuthStateStore } from "./d1-store.ts";
+import { D1AccountStore, D1CredentialStore, D1OAuthStateStore, D1RefreshVerificationStore } from "./d1-store.ts";
 import type { D1DatabaseLike } from "./d1-store.ts";
 import { encryptTokens, importEncryptionKey } from "./crypto.ts";
 import { MercadoLibreApiError, MercadoLibreClient, MercadoLibreSchemaError } from "./meli-client.ts";
 import { createOAuthTransaction, buildAuthorizationUrl, consumeOAuthState } from "./oauth.ts";
 import { runReadOnlyProbe } from "./probe.ts";
-import { RefreshUnavailableError, RotatingAccessTokenManager } from "./refresh.ts";
+import { RefreshBusyError, RefreshUnavailableError, RotatingAccessTokenManager } from "./refresh.ts";
 import { decryptStateVerifier, encryptStateVerifier } from "./state-crypto.ts";
-import type { AccountStore, ConnectedAccount, CredentialStore, FetchLike, OAuthStateStore } from "./types.ts";
+import type { AccountStore, ConnectedAccount, CredentialStore, FetchLike, OAuthStateStore, RefreshVerificationStore } from "./types.ts";
 
 export interface Phase0Env {
   DB: D1DatabaseLike;
@@ -26,12 +26,14 @@ export interface Phase0Dependencies {
   accountStore?: AccountStore;
   credentialStore?: CredentialStore;
   stateStore?: OAuthStateStore;
+  refreshVerificationStore?: RefreshVerificationStore;
   encryptionKey?: CryptoKey;
 }
 
 const START_PATH = "/phase0/oauth/start";
 const CALLBACK_PATH = "/phase0/oauth/callback";
 const CAPABILITY_PATH = "/phase0/capability";
+const REFRESH_VERIFY_PATH = "/phase0/refresh/verify";
 
 export type Phase0Handler = (request: Request, env: Phase0Env) => Promise<Response>;
 
@@ -54,6 +56,12 @@ export function createPhase0Worker(dependencies: Phase0Dependencies = {}): Phase
       const authorization = requireOperator(request, env.PHASE0_OPERATOR_TOKEN);
       if (authorization) return authorization;
       return handleCapability(env, dependencies);
+    }
+    if (url.pathname === REFRESH_VERIFY_PATH) {
+      if (method !== "POST") return methodNotAllowed("POST");
+      const authorization = requireOperator(request, env.PHASE0_OPERATOR_TOKEN);
+      if (authorization) return authorization;
+      return handleForcedRefresh(request, env, dependencies);
     }
     return jsonResponse({ error: "Not found" }, 404);
   };
@@ -149,6 +157,81 @@ async function handleCapability(env: Phase0Env, dependencies: Phase0Dependencies
   } catch (error) {
     return capabilityErrorResponse(error);
   }
+}
+
+async function handleForcedRefresh(request: Request, env: Phase0Env, dependencies: Phase0Dependencies): Promise<Response> {
+  const confirmation = await readRefreshConfirmation(request);
+  if (!confirmation) return jsonResponse({ error: "Explicit refresh confirmation is required" }, 400);
+  const now = dependencies.now ?? (() => Date.now());
+  const accountStore = dependencies.accountStore ?? new D1AccountStore(env.DB);
+  const credentialStore = dependencies.credentialStore ?? new D1CredentialStore(env.DB);
+  const verificationStore = dependencies.refreshVerificationStore ?? new D1RefreshVerificationStore(env.DB);
+  try {
+    const account = await accountStore.getConnected();
+    if (!account) return jsonResponse({ error: "No connected Mercado Libre account" }, 404);
+    const credential = await credentialStore.get(account.accountId);
+    if (!credential) return jsonResponse({ error: "Connected account credentials are unavailable" }, 409);
+    const claimed = await verificationStore.claim(account.accountId, credential.credentialVersion, now());
+    if (!claimed) return jsonResponse({ error: "The one-time refresh verification has already been used" }, 409);
+    const encryptionKey = await resolveEncryptionKey(env, dependencies);
+    if (!env.ML_CLIENT_ID || !env.ML_CLIENT_SECRET) {
+      await verificationStore.complete(account.accountId, "failed", credential.credentialVersion, now(), undefined, "not_configured");
+      return jsonResponse({ error: "Phase 0 OAuth is not configured" }, 503);
+    }
+    const client = createClient(env, dependencies);
+    const tokenManager = new RotatingAccessTokenManager({
+      accountId: account.accountId,
+      store: credentialStore,
+      encryptionKey,
+      now,
+      refreshClient: { refresh: (refreshToken) => client.refresh(refreshToken, env.ML_CLIENT_ID!, env.ML_CLIENT_SECRET!) },
+    });
+    await tokenManager.getAccessToken({ forceRefresh: true });
+    const after = await credentialStore.get(account.accountId);
+    if (!after || after.credentialVersion <= credential.credentialVersion) {
+      await verificationStore.complete(account.accountId, "failed", credential.credentialVersion, now(), undefined, "generation_not_advanced");
+      return jsonResponse({ error: "Refresh verification did not produce a newer credential generation" }, 502);
+    }
+    await verificationStore.complete(account.accountId, "succeeded", credential.credentialVersion, now(), after.credentialVersion);
+    return jsonResponse({ status: "refreshed", credentialVersionBefore: credential.credentialVersion, credentialVersionAfter: after.credentialVersion, expiresAt: after.expiresAt, verifiedAt: new Date(now()).toISOString() }, 200);
+  } catch (error) {
+    const account = await accountStore.getConnected().catch(() => null);
+    const credential = account ? await credentialStore.get(account.accountId).catch(() => null) : null;
+    if (account && credential) {
+      const verification = await verificationStore.get(account.accountId).catch(() => null);
+      if (verification?.status === "pending") {
+        const status = error instanceof MercadoLibreApiError && error.status === 0 ? "ambiguous" : "failed";
+        const code = status === "ambiguous" ? "network_outcome_unknown" : error instanceof MercadoLibreApiError ? `upstream_${error.status}` : "refresh_failed";
+        await verificationStore.complete(account.accountId, status, verification.credentialVersionBefore, now(), undefined, code).catch(() => undefined);
+      }
+    }
+    return forcedRefreshErrorResponse(error);
+  }
+}
+
+async function readRefreshConfirmation(request: Request): Promise<boolean> {
+  const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.startsWith("application/json")) return false;
+  const body = await request.text();
+  if (body.length > 256) return false;
+  try {
+    const value = JSON.parse(body) as unknown;
+    return typeof value === "object" && value !== null && (value as Record<string, unknown>).confirm === "rotate-once";
+  } catch {
+    return false;
+  }
+}
+
+function forcedRefreshErrorResponse(error: unknown): Response {
+  if (error instanceof RefreshBusyError) return jsonResponse({ error: "A refresh is already in progress; inspect before retrying" }, 409);
+  if (error instanceof MercadoLibreApiError) {
+    if (error.status === 0) return jsonResponse({ error: "Refresh outcome is ambiguous; inspect before retrying" }, 502);
+    if (error.status === 401 || error.status === 403 || error.status === 429) return jsonResponse({ error: "Mercado Libre refresh was rejected or rate limited" }, error.status);
+    return jsonResponse({ error: "Mercado Libre refresh failed" }, 502);
+  }
+  if (error instanceof MercadoLibreSchemaError) return jsonResponse({ error: "Mercado Libre returned an unexpected refresh response" }, 502);
+  if (error instanceof RefreshUnavailableError) return jsonResponse({ error: "Refresh verification could not complete safely" }, 503);
+  return jsonResponse({ error: "Refresh verification failed" }, 500);
 }
 
 function createClient(env: Phase0Env, dependencies: Phase0Dependencies): MercadoLibreClient {

@@ -107,3 +107,11 @@ Package versions intentionally pinned for this proof: `@cloudflare/vitest-plugin
 - [Current Peru highlights](https://developers.mercadolibre.com.pe/es_ar/sobre-nuestra-api/mas-vendidos-en-mercado-libre) was rechecked; `/highlights` can mix ITEM, PRODUCT, and USER_PRODUCT entities.
 
 Search results were accessed on 2026-09-04. Direct page fetches can return a documentation-site 403 to automated clients; the search extracts and linked official pages are retained as research leads and must be rechecked in a normal browser when a later phase depends on a detail.
+
+## Phase 0D Cloudflare deployment-readiness verification (checked 2026-09-04)
+
+- [Workers Secrets](https://developers.cloudflare.com/workers/configuration/secrets/) states that `wrangler secret put` creates a new Worker version and deploys it immediately. The same page documents `wrangler versions secret put` as the non-deploying alternative for creating a version, followed by `wrangler versions deploy`, and documents uploading secrets alongside code with `wrangler versions upload --secrets-file`.
+- [Wrangler configuration](https://developers.cloudflare.com/workers/wrangler/configuration/) documents `secrets.required`; `wrangler deploy` and `wrangler versions upload` validate that the required names are configured, while local development loads only the declared names.
+- [Versions and deployments](https://developers.cloudflare.com/workers/versions-and-deployments/) distinguishes a version from an active deployment and states that ordinary `wrangler deploy` couples creation with immediate 100% deployment; version upload and deployment can be decoupled for review or gradual promotion.
+
+These Cloudflare facts are the basis for the staging runbook in `docs/IMPLEMENTATION_PLAN.md`. No staging Worker or remote D1 was deployed during this task.

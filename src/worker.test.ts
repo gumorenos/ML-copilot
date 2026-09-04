@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { encryptTokens, generateEncryptionSecret, importEncryptionKey } from "./crypto.ts";
 import type { D1DatabaseLike } from "./d1-store.ts";
-import { MemoryCredentialStore } from "./memory-store.ts";
+import { MemoryCredentialStore, MemoryRefreshVerificationStore } from "./memory-store.ts";
 import { MemoryOAuthStateStore } from "./oauth.ts";
 import type { AccountStore, ConnectedAccount, FetchLike, OAuthTokens } from "./types.ts";
 import { createPhase0Worker, type Phase0Env } from "./worker.ts";
@@ -48,6 +48,14 @@ function capabilityRequest(): Request {
   return new Request("https://staging.example.test/phase0/capability", { headers: { Authorization: `Bearer ${OPERATOR_TOKEN}` } });
 }
 
+function forcedRefreshRequest(body: unknown = { confirm: "rotate-once" }): Request {
+  return new Request("https://staging.example.test/phase0/refresh/verify", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${OPERATOR_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 function syntheticTokens(now = 1_000_000): OAuthTokens {
   return { accessToken: ACCESS_TOKEN, refreshToken: REFRESH_TOKEN, tokenType: "Bearer", expiresIn: 3_600, expiresAt: now + 3_600_000 };
 }
@@ -60,10 +68,13 @@ async function startAndReadState(worker: ReturnType<typeof createPhase0Worker>, 
   return new URL(location).searchParams.get("state")!;
 }
 
-function fakeMeliFetch(options: { siteId?: string; exchangeStatus?: number; meStatus?: number; mePayload?: unknown; capabilityStatus?: number; onItems?: (count: number) => void } = {}): FetchLike {
+function fakeMeliFetch(options: { siteId?: string; exchangeStatus?: number; meStatus?: number; mePayload?: unknown; refreshStatus?: number; refreshNetworkFailure?: boolean; onToken?: () => void; onItems?: (count: number) => void } = {}): FetchLike {
   return async (input) => {
     const url = new URL(input.toString());
     if (url.pathname === "/oauth/token") {
+      options.onToken?.();
+      if (options.refreshNetworkFailure) throw new Error("synthetic network timeout");
+      if (options.refreshStatus) return jsonResponse({ message: "refresh failed", error: "invalid_grant" }, options.refreshStatus);
       if (options.exchangeStatus) return jsonResponse({ message: "authorization failed", error: "invalid_grant" }, options.exchangeStatus);
       return jsonResponse({ access_token: ACCESS_TOKEN, refresh_token: REFRESH_TOKEN, token_type: "Bearer", expires_in: 3_600, user_id: "9223372036854775807" });
     }
@@ -95,6 +106,20 @@ async function connectedCapabilityFixture(status?: number) {
   credentialStore.seed({ accountId: account.accountId, credentialVersion: 1, encrypted: await encryptTokens(syntheticTokens(), key, account.accountId), expiresAt: 4_600_000 });
   const worker = createPhase0Worker({ accountStore, credentialStore, encryptionKey: key, now: () => 1_000_000, maxReadRetries: 0, sleep: async () => undefined, fetchImpl: fakeMeliFetch({ meStatus: status }) });
   return { env, worker };
+}
+
+async function connectedRefreshFixture(fetchOptions: Parameters<typeof fakeMeliFetch>[0] = {}) {
+  const env = baseEnv();
+  const accountStore = new MemoryAccountStore();
+  const credentialStore = new MemoryCredentialStore();
+  const refreshVerificationStore = new MemoryRefreshVerificationStore();
+  const key = await importEncryptionKey(env.ML_ENCRYPTION_KEY!);
+  const account: ConnectedAccount = { accountId: "meli:refresh", mlUserId: "refresh-user", siteId: "MPE", tags: [], connectionStatus: "connected", connectedAt: new Date(900_000).toISOString() };
+  await accountStore.saveConnected(account);
+  credentialStore.seed({ accountId: account.accountId, credentialVersion: 1, encrypted: await encryptTokens(syntheticTokens(), key, account.accountId), expiresAt: 4_600_000 });
+  let tokenCalls = 0;
+  const worker = createPhase0Worker({ accountStore, credentialStore, refreshVerificationStore, encryptionKey: key, now: () => 1_000_000, maxReadRetries: 0, sleep: async () => undefined, fetchImpl: fakeMeliFetch({ ...fetchOptions, onToken: () => { tokenCalls += 1; fetchOptions.onToken?.(); } }) });
+  return { env, worker, credentialStore, refreshVerificationStore, tokenCalls: () => tokenCalls };
 }
 
 test("Phase 0 OAuth start requires the temporary operator token", async () => {
@@ -209,4 +234,57 @@ test("capability probe maps malformed responses and upstream auth/rate-limit sta
     assert.equal(response.status, status);
     assert.doesNotMatch(await response.text(), /synthetic-access-token|synthetic-refresh-token/);
   }
+});
+
+test("forced refresh requires operator authentication and explicit confirmation", async () => {
+  const fixture = await connectedRefreshFixture();
+  const unauthorized = await fixture.worker(new Request("https://staging.example.test/phase0/refresh/verify", { method: "POST", body: JSON.stringify({ confirm: "rotate-once" }), headers: { "content-type": "application/json" } }), fixture.env);
+  assert.equal(unauthorized.status, 401);
+  const unconfirmed = await fixture.worker(new Request("https://staging.example.test/phase0/refresh/verify", { method: "POST", headers: { Authorization: `Bearer ${OPERATOR_TOKEN}`, "content-type": "application/json" }, body: JSON.stringify({ confirm: "nope" }) }), fixture.env);
+  assert.equal(unconfirmed.status, 400);
+});
+
+test("forced refresh performs one rotating refresh, advances the generation, and rejects a second attempt", async () => {
+  const fixture = await connectedRefreshFixture();
+  const response = await fixture.worker(forcedRefreshRequest(), fixture.env);
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /"credentialVersionBefore":1/);
+  assert.match(body, /"credentialVersionAfter":2/);
+  assert.doesNotMatch(body, /synthetic-access-token|synthetic-refresh-token|test-client-secret/);
+  assert.equal((await fixture.credentialStore.get("meli:refresh"))?.credentialVersion, 2);
+  assert.equal((await fixture.refreshVerificationStore.get("meli:refresh"))?.status, "succeeded");
+  assert.equal(fixture.tokenCalls(), 1);
+  const second = await fixture.worker(forcedRefreshRequest(), fixture.env);
+  assert.equal(second.status, 409);
+  assert.equal(fixture.tokenCalls(), 1);
+});
+
+test("concurrent forced refresh attempts allow only one durable verification claim", async () => {
+  const fixture = await connectedRefreshFixture();
+  const responses = await Promise.all([fixture.worker(forcedRefreshRequest(), fixture.env), fixture.worker(forcedRefreshRequest(), fixture.env)]);
+  assert.deepEqual(responses.map((response) => response.status).sort(), [200, 409]);
+  assert.equal(fixture.tokenCalls(), 1);
+});
+
+test("forced refresh fails safely on an upstream error and never retries", async () => {
+  const fixture = await connectedRefreshFixture({ refreshStatus: 400 });
+  const response = await fixture.worker(forcedRefreshRequest(), fixture.env);
+  assert.equal(response.status, 502);
+  assert.doesNotMatch(await response.text(), /invalid_grant|synthetic-refresh-token/);
+  assert.equal(fixture.tokenCalls(), 1);
+  assert.equal((await fixture.refreshVerificationStore.get("meli:refresh"))?.status, "failed");
+  const second = await fixture.worker(forcedRefreshRequest(), fixture.env);
+  assert.equal(second.status, 409);
+});
+
+test("ambiguous forced refresh failure is not retried automatically and exposes no token", async () => {
+  const fixture = await connectedRefreshFixture({ refreshNetworkFailure: true });
+  const response = await fixture.worker(forcedRefreshRequest(), fixture.env);
+  assert.equal(response.status, 502);
+  const body = await response.text();
+  assert.match(body, /ambiguous/i);
+  assert.doesNotMatch(body, /synthetic-access-token|synthetic-refresh-token|test-client-secret/);
+  assert.equal(fixture.tokenCalls(), 1);
+  assert.equal((await fixture.refreshVerificationStore.get("meli:refresh"))?.status, "ambiguous");
 });

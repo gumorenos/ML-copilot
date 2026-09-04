@@ -1,6 +1,6 @@
 # Security
 
-Status: Phase 0C design and implementation baseline. Controls are release gates, not optional polish.
+Status: Phase 0D design and implementation baseline. Controls are release gates, not optional polish.
 
 ## Assets and boundaries
 
@@ -43,8 +43,15 @@ The local Workerd/D1 tests prove these SQL predicates against the local engine. 
 - `GET /phase0/oauth/start`: temporary operator token required; creates state/PKCE and redirects only to the configured MPE authorization host.
 - `GET /phase0/oauth/callback`: public; validates state, exchanges code, confirms MPE, encrypts credentials, and returns no raw payload.
 - `GET /phase0/capability`: temporary operator token required; reads only `/users/me`, seller item search, and bounded item details.
+- `POST /phase0/refresh/verify`: temporary operator token plus JSON `{ "confirm": "rotate-once" }`; one durable refresh verification.
 
 Unknown routes return safe errors. Capability errors map 401/403/429 without returning upstream bodies. The Worker has no generic URL proxy and no mutation route.
+
+## Forced refresh verification
+
+The Phase 0-only `POST /phase0/refresh/verify` route is an explicit operator action, not a normal application feature. It requires the operator token and an exact JSON confirmation phrase. A D1 row is claimed with `ON CONFLICT DO NOTHING` before the upstream refresh; only one attempt per connected account can proceed. The refresh manager bypasses the healthy-token shortcut but uses the same lease acquisition, rotating-token replacement, credential-version CAS, and lease release path as normal access-token refresh.
+
+A successful response contains only the before/after credential generation, expiry timestamp, and verification time. A definite upstream error is recorded as failed; a network/timeout outcome is recorded as ambiguous. Neither state is automatically retried, and later forced attempts are rejected. No seller/business resource is written.
 
 ## Logging, source, and CI
 

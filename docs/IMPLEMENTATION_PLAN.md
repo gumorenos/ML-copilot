@@ -1,15 +1,14 @@
 # Implementation plan
+Status: Phase 0D deployment-readiness patch implemented on `feat/phase-0-meli-connectivity`; no Phase 1 work is authorized.
 
-Status: Phase 0C implemented on `feat/phase-0-meli-connectivity`; no Phase 1 work is authorized.
-
-## Completed Phase 0C slice
+## Completed Phase 0D slice
 
 The branch now contains:
 
 - pinned Wrangler `4.129.0`, Vitest `4.1.11`, and `@cloudflare/vitest-plugin` `1.1.4`;
 - `wrangler.jsonc` with the `DB` D1 binding and safe placeholders;
 - `vitest.config.ts` and `test/apply-migrations.ts` using the official Cloudflare Workerd/D1 test integration;
-- a minimal `src/worker.ts` with three routes only;
+- a minimal `src/worker.ts` with four narrow routes, including one-time forced refresh verification;
 - encrypted OAuth-verifier storage, D1 account persistence, initial encrypted credential persistence, and lease/CAS validation;
 - mocked Node-native route tests plus actual local Workerd/D1 integration tests;
 - `.github/workflows/phase0-quality.yml` for reproducible checks on pull requests to `main` and pushes to this branch.
@@ -29,7 +28,7 @@ npm run build
 npm run d1:migrate:local
 ```
 
-`npm test` is the fast Node-native suite. `npm run test:worker` runs Vitest in the Cloudflare Workers pool and applies `migrations/0001_phase0_auth.sql` to local D1. `npm run d1:migrate:local` is an optional persistent local database check; both are local-only commands. `npm run build` compiles the Worker-compatible TypeScript source and runs the compiled module smoke check.
+`npm test` is the fast Node-native suite. `npm run test:worker` runs Vitest in the Cloudflare Workers pool and applies the checked-in migrations to local D1. `npm run d1:migrate:local` is an optional persistent local database check; both are local-only commands. `npm run build` compiles the Worker-compatible TypeScript source and runs the compiled module smoke check.
 
 ## Staging handoff (manual, not performed here)
 
@@ -39,28 +38,28 @@ npm run d1:migrate:local
    `https://<staging-hostname>/phase0/oauth/callback`
 
    The value must match `ML_REDIRECT_URI` byte-for-byte; HTTP, fragments, alternate paths, and trailing-slash differences are not interchangeable.
-3. Create a real Cloudflare D1 database and set the `DB` binding's real database ID in staging configuration. Apply the migration with Wrangler using the documented staging environment. Never use `--remote` from routine local tests.
-4. Set non-secret variables `ML_CLIENT_ID`, `ML_REDIRECT_URI`, and `ML_API_BASE_URL`.
-5. Set Worker Secrets without sending values through chat:
-
-   - `ML_CLIENT_SECRET`
-   - `ML_ENCRYPTION_KEY`
-   - `PHASE0_OPERATOR_TOKEN`
-
-   Generate the encryption key with the repository's Web Crypto helper or another trusted local generator; it must be a base64url-encoded 32-byte value.
-
-   Configure secrets interactively (never put values in Git or chat):
+3. Copy `wrangler.staging.example.jsonc` to the ignored `wrangler.staging.local.jsonc`; fill in the real staging D1 UUID, hostname, and non-secret variables. Run `npm run staging:validate` before any staging command. Routine tests continue to use `wrangler.jsonc`.
+4. Apply only the staging migration, explicitly remote:
 
    ```text
-   npx wrangler secret put ML_CLIENT_SECRET
-   npx wrangler secret put ML_ENCRYPTION_KEY
-   npx wrangler secret put PHASE0_OPERATOR_TOKEN
+   npx wrangler d1 migrations apply ml-copilot-phase0-staging --remote --config wrangler.staging.local.jsonc
    ```
-6. Deploy only the narrow Phase 0 Worker after reviewing the diff and secret scan. Do not add Cloudflare Access solely to make this callback work; record any Access interaction as a Phase 1 decision.
-7. Visit `/phase0/oauth/start` with the operator header. Complete Mercado Libre authorization in the main/admin MPE account. Mercado Libre redirects the browser to the public callback.
-8. After a successful callback, call `/phase0/capability` with the operator header. Record only sanitized aggregate results and seller-model tags.
-9. If refresh rotation is exercised, use a controlled test account first where supported. Do not repeat an ambiguous refresh request with the live seller credential.
-10. Compare the listing count/sample against Seller Center and update `docs/PHASE0_CAPABILITY_REPORT.md` without committing tokens, titles, buyer data, or raw payloads.
+
+   `--remote` is intentionally absent from local test commands.
+5. Prepare an ignored `.phase0-staging-secrets.json` containing `ML_CLIENT_SECRET`, `ML_ENCRYPTION_KEY`, and `PHASE0_OPERATOR_TOKEN`. Never commit it or place its values in chat.
+6. Deployment boundary: Cloudflare documents that `wrangler secret put KEY` creates a Worker version **and deploys it immediately**. Do not run those commands as a configuration-only step. For a reviewable staging release, upload code and secrets as an undeployed version, inspect it, then promote that exact version:
+
+   ```text
+   npx wrangler versions upload --config wrangler.staging.local.jsonc --secrets-file .phase0-staging-secrets.json --message phase0-staging
+   npx wrangler versions list --config wrangler.staging.local.jsonc
+   npx wrangler versions deploy --config wrangler.staging.local.jsonc --version-id <reviewed-version-id> -y
+   ```
+
+   `wrangler versions upload` creates a version; `wrangler versions deploy` makes it serve traffic. If the operator uses `wrangler deploy` or the dashboard Deploy action, that action publishes immediately. `wrangler versions secret put KEY` is also non-deploying but still requires a later `wrangler versions deploy`.
+7. Visit `/phase0/oauth/start` with the operator header and complete Mercado Libre authorization in the main/admin MPE account.
+8. Call `/phase0/capability` with the operator header and record only sanitized aggregate results.
+9. Verify one rotating refresh safely with one authenticated `POST /phase0/refresh/verify` and JSON body `{"confirm":"rotate-once"}`. The endpoint rejects later attempts; ambiguous network outcomes are terminal and must not be retried blindly.
+10. Compare the listing count/sample against Seller Center and update `docs/PHASE0_CAPABILITY_REPORT.md` without committing tokens, titles, buyer data, raw payloads, or complete callback URLs.
 
 The Phase 0 callback is not an application login system. A future deployment must replace the temporary operator token with the documented owner authentication boundary and protect alternate hostnames.
 

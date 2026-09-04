@@ -9,7 +9,8 @@
     "test": "node --experimental-strip-types --test \"src/**/*.test.ts\"",
     "test:worker": "vitest run --config vitest.config.ts",
     "d1:migrate:local": "wrangler d1 migrations apply ml-copilot-phase0 --local",
-    "phase0:probe": "node --experimental-strip-types scripts/phase0-probe.ts"
+    "phase0:probe": "node --experimental-strip-types scripts/phase0-probe.ts",
+    "staging:validate": "node --experimental-strip-types scripts/validate-staging-config.ts wrangler.staging.local.jsonc"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.1.4",

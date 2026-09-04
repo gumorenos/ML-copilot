@@ -9,6 +9,8 @@ test-results/
 dist/
 .phase0-*.json
 .phase0-*.tmp
+wrangler.staging.local.jsonc
+.wrangler.staging/
 
 # Local credentials and environment overrides
 .env

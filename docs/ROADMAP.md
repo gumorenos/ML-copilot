@@ -11,7 +11,7 @@ Status date: 2026-09-04. A phase starts only with explicit instruction after its
 
 ## Phase 0 — Research, architecture, and MPE capability proof
 
-### Phase 0C completed in this branch
+### Phase 0D completed in this branch
 
 - Real TypeScript compiler/build tooling and pinned lockfile.
 - Independent GitHub Actions quality workflow; no deployment or secrets.
@@ -19,6 +19,7 @@ Status date: 2026-09-04. A phase starts only with explicit instruction after its
 - AES-GCM state/token persistence, D1 account/credential/state stores, rotating refresh lease/CAS.
 - Actual local Workerd/D1 migration and persistence tests.
 - Mocked Worker route tests with read-only Mercado Libre responses.
+- Reviewable staging configuration template, required-secret validation, and one-time forced refresh verification route.
 
 ### Remaining external gate
 
@@ -50,4 +51,4 @@ React/Vite application shell, staging/production environments, Cloudflare Access
 - Phase 10: natural-language copilot with confirmation-bound actions.
 - Phase 11: PWA and polish.
 
-Each later phase needs its own documented acceptance gate. This branch must stop after Phase 0C.
+Each later phase needs its own documented acceptance gate. This branch must stop after Phase 0D.

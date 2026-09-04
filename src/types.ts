@@ -134,6 +134,31 @@ export interface CredentialStore {
   putInitial?(accountId: string, encrypted: EncryptedCredential, expiresAt: number, now: number): Promise<void>;
 }
 
+export type RefreshVerificationStatus = "pending" | "succeeded" | "failed" | "ambiguous";
+
+export interface RefreshVerification {
+  accountId: string;
+  status: RefreshVerificationStatus;
+  attemptedAt: number;
+  completedAt?: number;
+  credentialVersionBefore: number;
+  credentialVersionAfter?: number;
+  errorCode?: string;
+}
+
+export interface RefreshVerificationStore {
+  claim(accountId: string, credentialVersionBefore: number, now: number): Promise<boolean>;
+  complete(
+    accountId: string,
+    status: Exclude<RefreshVerificationStatus, "pending">,
+    credentialVersionBefore: number,
+    now: number,
+    credentialVersionAfter?: number,
+    errorCode?: string,
+  ): Promise<void>;
+  get(accountId: string): Promise<RefreshVerification | null>;
+}
+
 export interface OAuthStateRecord {
   stateHash: string;
   codeVerifier: string;

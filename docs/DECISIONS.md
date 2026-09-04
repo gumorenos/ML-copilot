@@ -146,8 +146,18 @@ Lightweight ADR format. “Accepted” means the current project direction; “P
 
 - Date: 2026-09-04
 - Status: Accepted for Phase 0; operator authentication is temporary
-- Decision: Add only `GET /phase0/oauth/start`, public `GET /phase0/oauth/callback`, and protected `GET /phase0/capability`. Protect start/capability with a server-side `PHASE0_OPERATOR_TOKEN`; keep the callback public for Mercado Libre navigation. Return sanitized responses and expose no generic upstream proxy or seller write.
+- Decision: Add only protected `GET /phase0/oauth/start`, public `GET /phase0/oauth/callback`, protected `GET /phase0/capability`, and the one-time protected `POST /phase0/refresh/verify`. Protect operator routes with a server-side `PHASE0_OPERATOR_TOKEN`; keep the callback public for Mercado Libre navigation. Return sanitized responses and expose no generic upstream proxy or seller write.
 - Alternatives: start the full React application; put the callback behind Cloudflare Access before testing; expose a public start route; use Hono or another router now.
 - Evidence: The Phase 0 gate needs only OAuth and read-only capability proof. Cloudflare Access interaction is a Phase 1 concern; the Worker route tests cover unauthorized, replay, wrong-site, upstream-error, redaction, and bounded-read paths.
 - Rationale: Smallest deployable proof that can complete the real callback without introducing UI, auth infrastructure, or business mutations.
 - Consequences: Staging must configure a temporary operator secret and replace/retire it before Phase 1. A future Access/JWT boundary and application router need a separate decision.
+
+## ADR-016 — Reviewable staging configuration and one-time refresh verification
+
+- Date: 2026-09-04
+- Status: Accepted for Phase 0D; staging workflow remains provisional until deployed
+- Decision: Keep local Workerd tests on `wrangler.jsonc`; commit `wrangler.staging.example.jsonc`; ignore `wrangler.staging.local.jsonc` and local secrets files; require explicit `--config` for staging commands. Declare staging `secrets.required` for the three justified Worker secrets. Add a protected `POST /phase0/refresh/verify` route with an exact confirmation phrase and a durable one-time D1 claim, then reuse the normal refresh lease/CAS path.
+- Alternatives: edit the committed config with environment values; use `wrangler secret put` as a setup step; allow repeated forced refreshes; add a queue, Redis, or Durable Object.
+- Evidence: Cloudflare's current Secrets documentation (checked 2026-09-04) states that `wrangler secret put` deploys immediately, while `wrangler versions secret put` and `wrangler versions upload` create undeployed versions. Wrangler configuration supports `secrets.required` validation. Mercado Libre refresh tokens are rotating and single-use, so an explicit terminal guard is safer for the one real verification.
+- Rationale: Prevent accidental public deployment and prevent consuming a real rotating refresh token more than once during Phase 0, without adding infrastructure.
+- Consequences: The staging operator must validate a local config, upload a version, inspect it, and promote deliberately. A failed or ambiguous forced verification is terminal and requires inspection; no automatic retry is allowed.

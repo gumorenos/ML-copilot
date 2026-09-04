@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ml-copilot-phase0-staging",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-04",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ml-copilot-phase0-staging",
+      "database_id": "REPLACE_WITH_REAL_STAGING_D1_UUID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "ML_CLIENT_ID": "REPLACE_WITH_MERCADO_LIBRE_CLIENT_ID",
+    "ML_API_BASE_URL": "https://api.mercadolibre.com",
+    "ML_REDIRECT_URI": "https://REPLACE_WITH_STAGING_HOSTNAME/phase0/oauth/callback"
+  },
+  "secrets": {
+    "required": ["ML_CLIENT_SECRET", "ML_ENCRYPTION_KEY", "PHASE0_OPERATOR_TOKEN"]
+  }
+}

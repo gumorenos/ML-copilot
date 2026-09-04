@@ -1,6 +1,5 @@
 # Conceptual D1 data model
-
-Status: Phase 0C implements only the three auth/state tables below. Later operational/history tables remain conceptual until their roadmap phase is explicitly authorized.
+Status: Phase 0D implements the four minimal auth/state/refresh-proof tables below. Later operational/history tables remain conceptual until their roadmap phase is explicitly authorized.
 
 ## Modeling rules
 
@@ -10,7 +9,7 @@ Status: Phase 0C implements only the three auth/state tables below. Later operat
 - Keep frequently queried fields as columns; use bounded JSON only for fields that do not need relational filtering.
 - Never store plaintext access/refresh tokens, authorization codes, buyer PII, raw upstream payload dumps, or image binaries in D1.
 
-## Phase 0 migration: `0001_phase0_auth.sql`
+## Phase 0 migrations: `0001_phase0_auth.sql` and `0002_phase0_refresh_verification.sql`
 
 ### `accounts`
 
@@ -49,9 +48,20 @@ Short-lived OAuth transaction state.
 
 The callback consumes a state row with an atomic conditional update before exchanging the authorization code. Authorization codes are never persisted.
 
+### `phase0_refresh_verifications`
+
+One terminal guard per connected account for the deliberate Phase 0 real-refresh check.
+
+- `account_id` primary/foreign key
+- `status` constrained to `pending`, `succeeded`, `failed`, or `ambiguous`
+- `attempted_at`, `completed_at`, `updated_at` integer/text timestamps
+- `credential_version_before`, optional `credential_version_after`
+- optional redacted `error_code` (never upstream body or token)
+
+The claim uses an atomic insert with `ON CONFLICT DO NOTHING`; a second attempt is rejected even after success, failure, or an ambiguous network outcome.
 ## Local D1 evidence
 
-`npm run test:worker` applies the migration to local Workerd/D1 and verifies table creation, one-time/expired state, encrypted credential persistence, one lease winner, stale-writer rejection, expired-lease recovery, and malformed/partial-lease failure. `npm run d1:migrate:local` applies the same migration to Wrangler's persistent local database. Neither is deployed Cloudflare evidence.
+`npm run test:worker` applies the migrations to local Workerd/D1 and verifies table creation, one-time/expired state, encrypted credential persistence, one lease winner, stale-writer rejection, expired-lease recovery, and malformed/partial-lease failure. `npm run d1:migrate:local` applies the same migration to Wrangler's persistent local database. Neither is deployed Cloudflare evidence.
 
 ## Future tables introduced by owning phases
 

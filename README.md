@@ -4,7 +4,7 @@ ML Copilot is a personal, mobile-first web application for operating one small M
 
 ## Current status
 
-The repository is on **Phase 0C: read-only connectivity proof hardening**. This branch contains a narrow OAuth/capability Worker, encrypted credential and refresh-coordination primitives, a typed read-only Mercado Libre adapter, deterministic seller-model classification, mocked route tests, and real local Workerd/D1 integration tests.
+The repository is on **Phase 0D: deployment-readiness hardening for the read-only connectivity proof**. This branch contains a narrow OAuth/capability Worker, encrypted credential and refresh-coordination primitives, a typed read-only Mercado Libre adapter, deterministic seller-model classification, mocked route tests, and real local Workerd/D1 integration tests.
 
 Overall Phase 0 is **PARTIAL**. Automated and local Worker+D1 evidence pass. No staging deployment or real MPE seller-account verification has been performed in this work session. Phase 1 and seller-data writes are not started or authorized.
 
@@ -16,7 +16,7 @@ The current implementation is strictly read-only with respect to seller/business
 
 Secrets and tokens stay server-side. Mercado Libre passwords are never collected. Material writes, when a later phase is explicitly authorized, must use a preview, confirmation, revalidation, verification, and audit record.
 
-## Phase 0C architecture
+## Phase 0D architecture
 
 ```text
 Operator (temporary header)
@@ -24,6 +24,7 @@ Operator (temporary header)
        - /phase0/oauth/start       protected
        - /phase0/oauth/callback    public browser callback
        - /phase0/capability        protected read-only probe
+       - /phase0/refresh/verify  protected one-time refresh verification
        - OAuth/PKCE and safe response handling
        - Mercado Libre typed read-only client
        - D1 repositories
@@ -45,7 +46,7 @@ The future application remains a single Cloudflare Worker with React/Vite static
 - Cloudflare Wrangler 4.129.0
 - `@cloudflare/vitest-plugin` 1.1.4 and Vitest 4.1.11 for local Workerd/D1 integration
 - Node native test runner for fast contract and Worker route mocks
-- Cloudflare D1 migration `migrations/0001_phase0_auth.sql`
+- Cloudflare D1 migrations `migrations/0001_phase0_auth.sql` and `migrations/0002_phase0_refresh_verification.sql`
 - Web Crypto AES-GCM for application-level credential encryption
 
 The React UI, Vite application shell, router, Access JWT boundary, production deployment, and all later product features remain deferred to Phase 1 or later.
@@ -74,10 +75,13 @@ Copy `.dev.vars.example` to a local ignored `.dev.vars` only for an explicitly c
 | `GET /phase0/oauth/start` | temporary operator token | Create one-time state/PKCE and redirect to the MPE authorization host |
 | `GET /phase0/oauth/callback` | public callback | Consume state, exchange code server-side, confirm MPE, persist encrypted credentials |
 | `GET /phase0/capability` | temporary operator token | Read `/users/me`, seller listing IDs, bounded item details, and seller-model evidence |
+| `POST /phase0/refresh/verify` | temporary operator token + JSON confirmation | One deliberate rotating-refresh verification; no seller-data writes |
 
 Use `X-Phase0-Operator-Token: <value>` or `Authorization: Bearer <value>` for protected routes. The operator token is a staging guard, not the future application authentication model.
 
 ## Staging configuration (not deployed by this task)
+
+Use the committed `wrangler.staging.example.jsonc` as a template. Copy it to the ignored `wrangler.staging.local.jsonc`, then fill in the real staging D1 UUID, hostname, and non-secret variables. Run `npm run staging:validate` before any staging command. Local tests continue to use `wrangler.jsonc` and local D1.
 
 Register the exact HTTPS redirect URI:
 
@@ -85,7 +89,9 @@ Register the exact HTTPS redirect URI:
 https://<staging-hostname>/phase0/oauth/callback
 ```
 
-Set non-secret Worker variables `ML_CLIENT_ID`, `ML_REDIRECT_URI`, and optionally `ML_API_BASE_URL`. Set Worker Secrets `ML_CLIENT_SECRET`, `ML_ENCRYPTION_KEY` (base64url-encoded 256-bit key), and `PHASE0_OPERATOR_TOKEN` with Wrangler. The D1 binding is named `DB`, with database name `ml-copilot-phase0`; use a real database ID only in staging configuration, never in this repository's placeholder file. No deployment is performed here.
+The staging template declares `secrets.required` for `ML_CLIENT_SECRET`, `ML_ENCRYPTION_KEY`, and `PHASE0_OPERATOR_TOKEN`; Wrangler validates those names during version upload/deploy. Keep values in an ignored `.phase0-staging-secrets.json` (or configure them through the dashboard without committing them).
+
+Cloudflare documents that `wrangler secret put` creates a Worker version and deploys it immediately. For a reviewable staging release, use `wrangler versions upload --config wrangler.staging.local.jsonc --secrets-file .phase0-staging-secrets.json`, inspect the returned version, and only then run `wrangler versions deploy --version-id <id> --config wrangler.staging.local.jsonc`. Do not run `wrangler secret put` as if it were a non-deploying setup step. No deployment is performed here.
 
 ## Repository map
 
@@ -97,6 +103,7 @@ Set non-secret Worker variables `ML_CLIENT_ID`, `ML_REDIRECT_URI`, and optionall
 |-- src/                                   OAuth, crypto, refresh, API, Worker, schemas, tests
 |-- test/                                  local Workerd/D1 setup and integration tests
 |-- wrangler.jsonc                         Worker/D1 config with safe placeholders
+|-- wrangler.staging.example.jsonc             committed staging template
 |-- vitest.config.ts                       official Cloudflare test configuration
 `-- docs/                                  product, architecture, API, security, QA, decisions, evidence
 ```

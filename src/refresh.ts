@@ -26,6 +26,13 @@ export class RefreshUnavailableError extends Error {
   }
 }
 
+export class RefreshBusyError extends RefreshUnavailableError {
+  constructor(message = "A refresh is already in progress") {
+    super(message);
+    this.name = "RefreshBusyError";
+  }
+}
+
 export class RotatingAccessTokenManager {
   private readonly options: RefreshManagerOptions;
   private readonly now: () => number;
@@ -45,23 +52,30 @@ export class RotatingAccessTokenManager {
     this.maxWaitAttempts = options.maxWaitAttempts ?? 20;
   }
 
-  async getAccessToken(): Promise<string> {
+  async getAccessToken(options: { forceRefresh?: boolean } = {}): Promise<string> {
+    const forceRefresh = options.forceRefresh === true;
     const record = await this.options.store.get(this.options.accountId);
     if (!record) throw new RefreshUnavailableError("No encrypted credentials are stored for this account");
     const current = await decryptTokens(record.encrypted, this.options.encryptionKey, this.options.accountId);
-    if (record.expiresAt > this.now() + this.refreshSkewMs) return current.accessToken;
+    if (!forceRefresh && record.expiresAt > this.now() + this.refreshSkewMs) return current.accessToken;
 
     const owner = randomBase64Url(16);
     const now = this.now();
     const acquired = await this.options.store.tryAcquireRefresh(this.options.accountId, record.credentialVersion, owner, now, now + this.leaseMs);
-    if (!acquired) return this.waitForFreshToken(record.credentialVersion);
+    if (!acquired) {
+      if (forceRefresh) throw new RefreshBusyError();
+      return this.waitForFreshToken(record.credentialVersion);
+    }
 
     let saved = false;
     try {
       const leased = await this.options.store.get(this.options.accountId);
-      if (!leased || leased.credentialVersion !== record.credentialVersion) return this.waitForFreshToken(record.credentialVersion);
+      if (!leased || leased.credentialVersion !== record.credentialVersion) {
+        if (forceRefresh) throw new RefreshUnavailableError("Credential generation changed during forced refresh");
+        return this.waitForFreshToken(record.credentialVersion);
+      }
       const leasedTokens = await decryptTokens(leased.encrypted, this.options.encryptionKey, this.options.accountId);
-      if (leased.expiresAt > this.now() + this.refreshSkewMs) return leasedTokens.accessToken;
+      if (!forceRefresh && leased.expiresAt > this.now() + this.refreshSkewMs) return leasedTokens.accessToken;
 
       const refreshed = await this.options.refreshClient.refresh(leasedTokens.refreshToken);
       const encrypted = await encryptTokens(refreshed, this.options.encryptionKey, this.options.accountId, this.keyVersion);
@@ -73,7 +87,10 @@ export class RotatingAccessTokenManager {
         refreshed.expiresAt,
         this.now(),
       );
-      if (!saved) return this.waitForFreshToken(record.credentialVersion);
+      if (!saved) {
+        if (forceRefresh) throw new RefreshUnavailableError("Forced refresh could not commit a newer credential generation");
+        return this.waitForFreshToken(record.credentialVersion);
+      }
       return refreshed.accessToken;
     } finally {
       if (!saved) await this.options.store.releaseRefresh(this.options.accountId, owner);

@@ -1,4 +1,4 @@
-import type { CredentialRecord, CredentialStore, EncryptedCredential } from "./types.ts";
+import type { CredentialRecord, CredentialStore, EncryptedCredential, RefreshVerification, RefreshVerificationStore } from "./types.ts";
 
 export class MemoryCredentialStore implements CredentialStore {
   private readonly records = new Map<string, CredentialRecord>();
@@ -60,4 +60,38 @@ function cloneEncrypted(value: EncryptedCredential): EncryptedCredential {
 
 function cloneRecord(value: CredentialRecord): CredentialRecord {
   return { ...value, encrypted: cloneEncrypted(value.encrypted) };
+}
+
+export class MemoryRefreshVerificationStore implements RefreshVerificationStore {
+  private readonly records = new Map<string, RefreshVerification>();
+
+  async claim(accountId: string, credentialVersionBefore: number, now: number): Promise<boolean> {
+    if (this.records.has(accountId)) return false;
+    this.records.set(accountId, { accountId, status: "pending", attemptedAt: now, credentialVersionBefore });
+    return true;
+  }
+
+  async complete(
+    accountId: string,
+    status: "succeeded" | "failed" | "ambiguous",
+    credentialVersionBefore: number,
+    now: number,
+    credentialVersionAfter?: number,
+    errorCode?: string,
+  ): Promise<void> {
+    const current = this.records.get(accountId);
+    if (!current || current.credentialVersionBefore !== credentialVersionBefore) throw new Error("Refresh verification claim is missing or stale");
+    this.records.set(accountId, {
+      ...current,
+      status,
+      completedAt: now,
+      ...(credentialVersionAfter === undefined ? {} : { credentialVersionAfter }),
+      ...(errorCode === undefined ? {} : { errorCode }),
+    });
+  }
+
+  async get(accountId: string): Promise<RefreshVerification | null> {
+    const record = this.records.get(accountId);
+    return record ? { ...record } : null;
+  }
 }

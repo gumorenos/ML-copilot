@@ -1,4 +1,4 @@
-import type { AccountStore, ConnectedAccount, CredentialRecord, CredentialStore, EncryptedCredential, OAuthStateRecord, OAuthStateStore } from "./types.ts";
+import type { AccountStore, ConnectedAccount, CredentialRecord, CredentialStore, EncryptedCredential, OAuthStateRecord, OAuthStateStore, RefreshVerification, RefreshVerificationStore, RefreshVerificationStatus } from "./types.ts";
 
 export interface D1RunResult {
   meta: { changes: number };
@@ -120,6 +120,61 @@ export class D1CredentialStore implements CredentialStore {
     await this.db.prepare(
       "UPDATE oauth_credentials SET refresh_lease_owner = NULL, refresh_lease_until = NULL WHERE account_id = ?1 AND refresh_lease_owner = ?2",
     ).bind(accountId, owner).run();
+  }
+}
+
+interface RefreshVerificationRow extends Record<string, unknown> {
+  account_id: unknown;
+  status: unknown;
+  attempted_at: unknown;
+  completed_at: unknown;
+  credential_version_before: unknown;
+  credential_version_after: unknown;
+  error_code: unknown;
+}
+
+export class D1RefreshVerificationStore implements RefreshVerificationStore {
+  private readonly db: D1DatabaseLike;
+
+  constructor(db: D1DatabaseLike) {
+    this.db = db;
+  }
+
+  async claim(accountId: string, credentialVersionBefore: number, now: number): Promise<boolean> {
+    if (!accountId) throw new Error("Refresh verification account ID is required");
+    assertPositiveInteger(credentialVersionBefore, "credential version");
+    assertInteger(now, "refresh verification time");
+    const result = await this.db.prepare(
+      "INSERT INTO phase0_refresh_verifications (account_id, status, attempted_at, credential_version_before, updated_at) VALUES (?1, 'pending', ?2, ?3, ?4) ON CONFLICT(account_id) DO NOTHING",
+    ).bind(accountId, now, credentialVersionBefore, new Date(now).toISOString()).run();
+    return result.meta.changes === 1;
+  }
+
+  async complete(
+    accountId: string,
+    status: Exclude<RefreshVerificationStatus, "pending">,
+    credentialVersionBefore: number,
+    now: number,
+    credentialVersionAfter?: number,
+    errorCode?: string,
+  ): Promise<void> {
+    assertPositiveInteger(credentialVersionBefore, "credential version");
+    assertInteger(now, "refresh verification time");
+    if (status === "succeeded" && (!credentialVersionAfter || credentialVersionAfter <= credentialVersionBefore)) {
+      throw new Error("Successful refresh verification must advance credential version");
+    }
+    const result = await this.db.prepare(
+      "UPDATE phase0_refresh_verifications SET status = ?1, completed_at = ?2, credential_version_after = ?3, error_code = ?4, updated_at = ?5 WHERE account_id = ?6 AND status = 'pending' AND credential_version_before = ?7",
+    ).bind(status, now, credentialVersionAfter ?? null, errorCode ?? null, new Date(now).toISOString(), accountId, credentialVersionBefore).run();
+    if (result.meta.changes !== 1) throw new Error("Refresh verification claim is missing or stale");
+  }
+
+  async get(accountId: string): Promise<RefreshVerification | null> {
+    const row = await this.db.prepare(
+      "SELECT account_id, status, attempted_at, completed_at, credential_version_before, credential_version_after, error_code FROM phase0_refresh_verifications WHERE account_id = ?1",
+    ).bind(accountId).first<RefreshVerificationRow>();
+    if (!row) return null;
+    return parseRefreshVerificationRow(row, accountId);
   }
 }
 
@@ -246,6 +301,28 @@ function parseOAuthStateRow(row: OAuthStateRow): ParsedOAuthStateRow {
   const expiresAt = nonNegativeInteger(row.expires_at, "OAuth state expiry");
   return { state_hash: row.state_hash, code_verifier_ciphertext: row.code_verifier_ciphertext, code_verifier_iv: row.code_verifier_iv, expires_at: expiresAt, consumed_at: consumedAt };
 }
+
+function parseRefreshVerificationRow(row: RefreshVerificationRow, requestedAccountId: string): RefreshVerification {
+  if (typeof row.account_id !== "string" || row.account_id !== requestedAccountId) throw new Error("Stored refresh verification has an invalid account ID");
+  if (row.status !== "pending" && row.status !== "succeeded" && row.status !== "failed" && row.status !== "ambiguous") throw new Error("Stored refresh verification has an invalid status");
+  const attemptedAt = nonNegativeInteger(row.attempted_at, "refresh verification attempt time");
+  const completedAt = nullableInteger(row.completed_at, "refresh verification completion time");
+  const before = positiveInteger(row.credential_version_before, "refresh verification credential version");
+  const after = nullableInteger(row.credential_version_after, "refresh verification credential version after");
+  const errorCode = nullableString(row.error_code, "refresh verification error code");
+  if (row.status === "pending" && completedAt !== null) throw new Error("Stored refresh verification has an invalid pending completion");
+  if (row.status === "succeeded" && (after === null || after <= before)) throw new Error("Stored successful refresh verification did not advance credentials");
+  return {
+    accountId: row.account_id,
+    status: row.status,
+    attemptedAt,
+    ...(completedAt === null ? {} : { completedAt }),
+    credentialVersionBefore: before,
+    ...(after === null ? {} : { credentialVersionAfter: after }),
+    ...(errorCode === null ? {} : { errorCode }),
+  };
+}
+
 function isEncryptedCredential(value: unknown): value is EncryptedCredential {
   if (typeof value !== "object" || value === null) return false;
   const item = value as Record<string, unknown>;

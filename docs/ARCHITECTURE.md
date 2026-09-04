@@ -1,10 +1,9 @@
 # Architecture
-
-Status: Phase 0C implementation; production application architecture remains provisional until the Phase 1 deployment gate.
+Status: Phase 0D implementation; production application architecture remains provisional until the Phase 1 deployment gate.
 
 ## Scope and trust boundaries
 
-ML Copilot serves one owner and a small Mercado Libre Peru (MPE) catalogue. Mercado Libre is the operational source of truth. Phase 0C is a read-only connectivity proof and is deliberately not the product UI.
+ML Copilot serves one owner and a small Mercado Libre Peru (MPE) catalogue. Mercado Libre is the operational source of truth. Phase 0D remains a read-only connectivity proof and is deliberately not the product UI.
 
 ```text
 Operator with temporary token
@@ -12,6 +11,7 @@ Operator with temporary token
        GET /phase0/oauth/start       protected
        GET /phase0/oauth/callback    public browser callback
        GET /phase0/capability        protected read-only probe
+       POST /phase0/refresh/verify protected one-time refresh proof
        OAuth/PKCE, encrypted storage, refresh CAS/lease
        typed Mercado Libre adapter
        D1 repositories
@@ -20,11 +20,11 @@ Operator with temporary token
 
 The callback is public only because Mercado Libre must navigate the browser to it. It has no operator bypass: state, PKCE, code exchange, site, and credential persistence are all validated server-side. The protected routes use a temporary `PHASE0_OPERATOR_TOKEN` header guard for staging proof. Cloudflare Access and Access-JWT validation remain Phase 1 work.
 
-There is no React UI, static asset bundle, generic proxy, seller mutation, order mutation, analytics, market engine, AI provider, image provider, Queue, Durable Object, Redis, or R2 binding in Phase 0C.
+There is no React UI, static asset bundle, generic proxy, seller mutation, order mutation, analytics, market engine, AI provider, image provider, Queue, Durable Object, Redis, or R2 binding in Phase 0D.
 
 ## Worker entry point and configuration
 
-`src/worker.ts` exports `createPhase0Worker()` and a default Cloudflare Worker handler. `wrangler.jsonc` is the checked-in configuration with safe placeholder values. The D1 binding is `DB`; migration `migrations/0001_phase0_auth.sql` creates `accounts`, `oauth_states`, and `oauth_credentials` plus their indexes. Local Workerd tests load the same migration through `@cloudflare/vitest-plugin`; `npm run d1:migrate:local` applies it to Wrangler's persistent local database.
+`src/worker.ts` exports `createPhase0Worker()` and a default Cloudflare Worker handler. `wrangler.jsonc` is the checked-in configuration with safe placeholder values. The D1 binding is `DB`; migrations `0001_phase0_auth.sql` and `0002_phase0_refresh_verification.sql` create the minimal auth, credential, state, and one-time refresh-verification tables plus their indexes. Local Workerd tests load the same migration through `@cloudflare/vitest-plugin`; `npm run d1:migrate:local` applies it to Wrangler's persistent local database.
 
 Required non-secret variables are `ML_CLIENT_ID`, exact HTTPS `ML_REDIRECT_URI`, and optional `ML_API_BASE_URL`. Required secrets are `ML_CLIENT_SECRET`, `ML_ENCRYPTION_KEY` (base64url 256-bit AES key), and `PHASE0_OPERATOR_TOKEN`. They are never checked in, returned, or logged.
 
@@ -37,7 +37,7 @@ Required non-secret variables are `ML_CLIENT_ID`, exact HTTPS `ML_REDIRECT_URI`,
 - `d1-store.ts` and `memory-store.ts`: account/credential/state persistence contracts. D1 refresh updates use conditional version/lease predicates; memory stores are only test doubles.
 - `refresh.ts`: rotating refresh-token manager. It decrypts the current generation, claims a short lease, performs one refresh, and atomically saves the new encrypted pair/version. A waiting caller rereads the newer generation; expiry or failure releases/reclaims the lease safely.
 - `model.ts` and `probe.ts`: conservative legacy/User Products/coexistence/unknown classification and sanitized read-only evidence. Item hydration is bounded to five in the probe and never exceeds the Mercado Libre multiget limit of 20.
-- `worker.ts`: route authorization, OAuth orchestration, account binding, safe responses, and error mapping. It does not expose raw upstream payloads or credentials.
+- `worker.ts`: route authorization, OAuth orchestration, account binding, safe responses, error mapping, and the protected one-time refresh verification route. It does not expose raw upstream payloads or credentials.
 
 The future application can promote these interfaces into a service layer. Phase 1 may add a Worker router and React/Vite assets only after this gate is explicitly closed.
 
@@ -50,7 +50,7 @@ The future application can promote these interfaces into a service layer. Phase 
 5. Capability calls use the stored generation. If near expiry, `RotatingAccessTokenManager` acquires the D1 lease/CAS, refreshes once, replaces the complete encrypted pair, increments the version, and clears the lease.
 6. Invalid/revoked refresh credentials fail closed and require reconnection. Ambiguous refresh outcomes are not blindly retried.
 
-The local Workerd/D1 suite proves the SQL path against the local engine, including one lease winner, stale-writer rejection, expired-lease recovery, one-time state consumption, encrypted persistence, and malformed-data rejection. It is not deployed Cloudflare evidence.
+The local Workerd/D1 suite proves the SQL path against the local engine, including one lease winner, stale-writer rejection, expired-lease recovery, one-time state consumption, encrypted persistence, malformed-data rejection, and a durable one-time forced-refresh claim. It is not deployed Cloudflare evidence.
 
 ## Read-only capability flow
 

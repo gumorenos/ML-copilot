@@ -11,7 +11,7 @@ Every result is labeled separately:
 
 No mock or local result is presented as deployed or real-account evidence.
 
-## Current Phase 0C checks
+## Current Phase 0D checks
 
 Required local commands are:
 
@@ -28,11 +28,13 @@ Current results in this work session:
 
 - `npm ci`: completed with the pinned lockfile using Node secure system-CA support; no TLS bypass; 0 audit vulnerabilities reported.
 - `npm run typecheck`: real TypeScript compiler, 0 errors.
-- `npm test`: 46/46 passed (Node native; mocked API and D1-shaped contracts).
-- `npm run test:worker`: 8/8 passed (local Workerd/D1; migration applied by setup).
+- `npm test`: 51/51 passed (Node native; mocked API and D1-shaped contracts).
+- `npm run test:worker`: 9/9 passed (local Workerd/D1; migrations applied by setup).
 - `npm run build`: TypeScript emitted compiled JavaScript and the compiled runtime smoke check passed.
-- `npm run d1:migrate:local`: migration `0001_phase0_auth.sql` applied successfully to the local-only Wrangler database.
+- `npm run d1:migrate:local`: migrations `0001_phase0_auth.sql` and `0002_phase0_refresh_verification.sql` applied successfully to the local-only Wrangler database.
 - `npx wrangler deploy --dry-run --outdir .wrangler/dry-run`: Worker bundle validation passed; no deployment occurred.
+- `npx wrangler deploy --dry-run --config wrangler.staging.example.jsonc`: staging template bundle validation passed; no deployment occurred.
+- `npm run staging:validate`: passed with a temporary synthetic ignored config; the committed template is correctly rejected for placeholders.
 - `git diff --check` and secret-pattern scan remain mandatory before commit.
 
 ## Automated / mocked coverage
@@ -43,7 +45,11 @@ Use only synthetic values. Do not point routine tests at Mercado Libre or a live
 
 ## Local Workerd/D1 integration coverage
 
-`test/d1.integration.test.ts` applies the checked-in migration and proves: required tables exist; OAuth state is inserted and consumed once; expired state is rejected; encrypted credentials persist/read without plaintext; exactly one lease wins; stale credential generation cannot overwrite; expired lease recovery works; and malformed encrypted/partial-lease data fails closed. This is local engine evidence, not deployed D1 evidence.
+`test/d1.integration.test.ts` applies the checked-in migrations and proves: required tables exist; OAuth state is inserted and consumed once; expired state is rejected; encrypted credentials persist/read without plaintext; exactly one lease wins; stale credential generation cannot overwrite; expired lease recovery works; malformed encrypted/partial-lease data fails closed; and a durable one-time refresh-verification claim reaches a terminal state. This is local engine evidence, not deployed D1 evidence.
+
+## Forced refresh verification coverage
+
+The Node-native route suite covers unauthorized access, missing confirmation, one-time successful rotation with generation advancement, concurrent claim protection, second-attempt rejection, definite upstream failure, ambiguous network failure without retry, and response redaction. The local Workerd/D1 suite also proves the durable terminal claim state. No real refresh token was used here.
 
 ## CI
 
@@ -55,7 +61,7 @@ The real MPE gate may perform only OAuth token exchange/refresh and read-only `/
 
 ## Phase gates
 
-- **Phase 0C local gate**: the automated and local Workerd/D1 checks above pass, the Worker routes are documented, and the branch remains read-only.
+- **Phase 0D local gate**: the automated and local Workerd/D1 checks above pass, the Worker routes are documented, and the branch remains read-only.
 - **Phase 0 external gate**: staging deployment plus real MPE read-only checklist in `docs/PHASE0_CAPABILITY_REPORT.md`; required for PASS.
 - **Phase 1 gate**: only after explicit authorization, adds the application shell, Access/JWT boundary, and minimal connection UI. It is not started here.
 
